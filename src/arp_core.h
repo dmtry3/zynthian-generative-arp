@@ -17,9 +17,12 @@ typedef void (*arp_emit_fn)(void* user, double tick, uint8_t st, uint8_t d1, uin
 typedef struct { uint8_t ch, note, vel; uint32_t seq; } ArpNote;   /* seq: press order */
 
 typedef struct {
-  ArpNote held[ARP_MAX_NOTES];  /* pressed keys, sorted by note, then channel */
+  ArpNote held[ARP_MAX_NOTES];  /* notes being arpeggiated, sorted by note, then channel */
   int nheld;
   uint32_t press_seq;
+  ArpNote phys[ARP_MAX_NOTES];  /* keys physically down (unsorted) */
+  int nphys;
+  int latch;                    /* latched: released keys stay in held until a new chord */
 
   /* parameters */
   int rate, gate_pct, order, octaves;
@@ -41,9 +44,13 @@ void arp_init(ArpCore* a);
 /* Values are clamped. Rate/order take effect on the next step, gate on the next note. */
 void arp_set_params(ArpCore* a, int rate, int gate_pct, int order, int octaves);
 void arp_seed(ArpCore* a, uint32_t seed);
-/* Returns 1 if this was the first pressed key (nothing was held before). */
+/* Latch on: the chord stays after the keys are released; the next chord (pressed after all keys
+ * were released) replaces it. Latch off: only the keys still down are kept. */
+void arp_set_latch(ArpCore* a, int on);
+/* Returns 1 if nothing was being arpeggiated before this key. */
 int  arp_note_on(ArpCore* a, uint8_t ch, uint8_t note, uint8_t vel);
 void arp_note_off(ArpCore* a, uint8_t ch, uint8_t note);
+/* All notes off: clears pressed keys and the latched chord. */
 void arp_release_all(ArpCore* a);
 /* Generate events with tick in [from, to). Steps fall on multiples of step_ticks. */
 void arp_process(ArpCore* a, double from, double to, arp_emit_fn emit, void* user);

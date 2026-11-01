@@ -328,6 +328,101 @@ static void test_wide_chord_octaves(void) {
   check_seq("span over an octave: sorted, duplicates removed", &l, exp, 6);
 }
 
+/* ---------- latch ---------- */
+
+/* note-on pitches produced over [from, to) */
+static int play(ArpCore* a, double from, double to, int* out) {
+  Log l = {0};
+  arp_process(a, from, to, collect, &l);
+  return ons(&l, out);
+}
+
+static void expect(const char* name, const int* got, int n, const int* exp, int nexp) {
+  int ok = (n == nexp);
+  for (int i = 0; ok && i < n; i++) if (got[i] != exp[i]) ok = 0;
+  printf("%s: %s\n", ok ? "PASS" : "FAIL", name);
+  if (!ok) {
+    printf("  got:"); for (int i = 0; i < n; i++) printf(" %d", got[i]);
+    printf("\n  exp:"); for (int i = 0; i < nexp; i++) printf(" %d", exp[i]);
+    printf("\n"); failures++;
+  }
+}
+
+static void test_latch(void) {
+  int g[64], n;
+  ArpCore a;
+
+  /* latch on: chord keeps playing after release */
+  arp_init(&a); arp_set_latch(&a, 1); chord(&a);
+  arp_note_off(&a, 0, 60); arp_note_off(&a, 0, 64); arp_note_off(&a, 0, 67);
+  n = play(&a, 0, 240 * 4, g);
+  { static const int e[] = { 60, 64, 67, 60 }; expect("latch: chord keeps playing after keys released", g, n, e, 4); }
+
+  /* new chord after release replaces it, order restarts */
+  arp_note_on(&a, 0, 50, 100); arp_note_on(&a, 0, 53, 100);
+  n = play(&a, 960, 960 + 240 * 3, g);
+  { static const int e[] = { 50, 53, 50 }; expect("latch: next chord replaces latched one, order from start", g, n, e, 3); }
+
+  /* adding a key while others are down adds to the chord; releasing one keeps it */
+  arp_note_on(&a, 0, 57, 100);                 /* 50 53 still down */
+  arp_note_off(&a, 0, 50);                     /* 53 57 down, 50 stays latched */
+  n = play(&a, 1680, 1680 + 240 * 3, g);       /* last was 50 -> 53 57 50 */
+  { static const int e[] = { 53, 57, 50 }; expect("latch: key added while holding joins, released key stays", g, n, e, 3); }
+
+  /* latch off while some keys are down: only those stay */
+  arp_set_latch(&a, 0);                        /* 53 57 down */
+  n = play(&a, 2400, 2400 + 240 * 3, g);       /* last 50 -> 53 57 53 */
+  { static const int e[] = { 53, 57, 53 }; expect("latch off with keys down: only pressed keys keep playing", g, n, e, 3); }
+
+  /* latch off with nothing down: stops */
+  arp_init(&a); arp_set_latch(&a, 1); chord(&a);
+  arp_note_off(&a, 0, 60); arp_note_off(&a, 0, 64); arp_note_off(&a, 0, 67);
+  n = play(&a, 0, 240, g);
+  arp_set_latch(&a, 0);
+  Log l = {0};
+  arp_process(&a, 240, 1200, collect, &l);
+  { static const double e[][3] = { {120, 0, 60} };
+    (void)n; check("latch off with nothing down: arp stops (sounding note already ended)", &l, e, 0); }
+  printf("%s: latch off clears the latched chord\n", a.nheld == 0 ? "PASS" : "FAIL");
+  if (a.nheld) failures++;
+
+  /* latch turned on while holding: chord latches on release */
+  arp_init(&a); chord(&a);
+  arp_set_latch(&a, 1);
+  arp_note_off(&a, 0, 60); arp_note_off(&a, 0, 64); arp_note_off(&a, 0, 67);
+  n = play(&a, 0, 240 * 3, g);
+  { static const int e[] = { 60, 64, 67 }; expect("latch on while holding: chord latches on release", g, n, e, 3); }
+
+  /* latch on with nothing held: nothing happens until a chord */
+  arp_init(&a); arp_set_latch(&a, 1);
+  n = play(&a, 0, 960, g);
+  { static const int e[] = { 0 }; expect("latch on with nothing pressed: silence", g, n, e, 0); }
+
+  /* all notes off clears the latched chord */
+  arp_init(&a); arp_set_latch(&a, 1); chord(&a);
+  arp_note_off(&a, 0, 60); arp_note_off(&a, 0, 64); arp_note_off(&a, 0, 67);
+  arp_release_all(&a);
+  n = play(&a, 0, 960, g);
+  { static const int e[] = { 0 }; expect("all notes off clears the latched chord", g, n, e, 0); }
+  /* and the next press starts fresh (first key) */
+  int first = arp_note_on(&a, 0, 62, 100);
+  printf("%s: after all notes off the next key is a first key\n", first ? "PASS" : "FAIL");
+  if (!first) failures++;
+
+  /* replacing a latched chord is not a 'first key' (arp keeps its rhythm) */
+  arp_init(&a); arp_set_latch(&a, 1); chord(&a);
+  arp_note_off(&a, 0, 60); arp_note_off(&a, 0, 64); arp_note_off(&a, 0, 67);
+  first = arp_note_on(&a, 0, 50, 100);
+  printf("%s: replacing a latched chord keeps the rhythm (not a first key)\n", !first ? "PASS" : "FAIL");
+  if (first) failures++;
+
+  /* latch off -> behaves exactly as before */
+  arp_init(&a); arp_set_latch(&a, 1); arp_set_latch(&a, 0); chord(&a);
+  arp_note_off(&a, 0, 60); arp_note_off(&a, 0, 64); arp_note_off(&a, 0, 67);
+  n = play(&a, 0, 960, g);
+  { static const int e[] = { 0 }; expect("latch off: releasing keys stops the arp", g, n, e, 0); }
+}
+
 int main(void) {
   test_up_one_block();
   test_chunks();
@@ -345,6 +440,7 @@ int main(void) {
   test_live_changes();
   test_high_notes();
   test_wide_chord_octaves();
+  test_latch();
   printf(failures ? "\n%d FAILED\n" : "\nALL PASSED\n", failures);
   return failures ? 1 : 0;
 }

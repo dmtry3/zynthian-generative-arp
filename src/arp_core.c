@@ -38,11 +38,15 @@ static int key_less(uint8_t n1, uint8_t c1, uint8_t n2, uint8_t c2) {
 
 static void reset_order(ArpCore* a) { a->has_last = 0; a->played_idx = 0; }
 
-int arp_note_on(ArpCore* a, uint8_t ch, uint8_t note, uint8_t vel) {
-  int first = (a->nheld == 0);
-  for (int i = 0; i < a->nheld; i++)
-    if (a->held[i].ch == ch && a->held[i].note == note) { a->held[i].vel = vel; return first; }
-  if (a->nheld >= ARP_MAX_NOTES) return first;
+static int find(const ArpNote* v, int n, uint8_t ch, uint8_t note) {
+  for (int i = 0; i < n; i++) if (v[i].ch == ch && v[i].note == note) return i;
+  return -1;
+}
+
+static void held_add(ArpCore* a, uint8_t ch, uint8_t note, uint8_t vel) {
+  int i = find(a->held, a->nheld, ch, note);
+  if (i >= 0) { a->held[i].vel = vel; return; }
+  if (a->nheld >= ARP_MAX_NOTES) return;
   int pos = a->nheld;
   while (pos > 0 && key_less(note, ch, a->held[pos - 1].note, a->held[pos - 1].ch)) {
     a->held[pos] = a->held[pos - 1];
@@ -51,21 +55,46 @@ int arp_note_on(ArpCore* a, uint8_t ch, uint8_t note, uint8_t vel) {
   a->held[pos].ch = ch; a->held[pos].note = note; a->held[pos].vel = vel;
   a->held[pos].seq = a->press_seq++;
   a->nheld++;
+}
+
+static void held_remove(ArpCore* a, uint8_t ch, uint8_t note) {
+  int i = find(a->held, a->nheld, ch, note);
+  if (i < 0) return;
+  memmove(&a->held[i], &a->held[i + 1], (size_t)(a->nheld - i - 1) * sizeof(ArpNote));
+  a->nheld--;
+  if (a->nheld == 0) reset_order(a);
+}
+
+int arp_note_on(ArpCore* a, uint8_t ch, uint8_t note, uint8_t vel) {
+  int first = (a->nheld == 0);
+  if (a->latch && a->nphys == 0 && a->nheld > 0) {   /* new chord replaces the latched one */
+    a->nheld = 0;
+    reset_order(a);
+  }
+  if (find(a->phys, a->nphys, ch, note) < 0 && a->nphys < ARP_MAX_NOTES) {
+    a->phys[a->nphys].ch = ch; a->phys[a->nphys].note = note; a->phys[a->nphys].vel = vel;
+    a->nphys++;
+  }
+  held_add(a, ch, note, vel);
   return first;
 }
 
 void arp_note_off(ArpCore* a, uint8_t ch, uint8_t note) {
-  for (int i = 0; i < a->nheld; i++) {
-    if (a->held[i].ch == ch && a->held[i].note == note) {
-      memmove(&a->held[i], &a->held[i + 1], (size_t)(a->nheld - i - 1) * sizeof(ArpNote));
-      a->nheld--;
-      break;
-    }
-  }
-  if (a->nheld == 0) reset_order(a);
+  int i = find(a->phys, a->nphys, ch, note);
+  if (i >= 0) a->phys[i] = a->phys[--a->nphys];
+  if (!a->latch) held_remove(a, ch, note);
 }
 
-void arp_release_all(ArpCore* a) { a->nheld = 0; reset_order(a); }
+void arp_set_latch(ArpCore* a, int on) {
+  on = on ? 1 : 0;
+  if (on == a->latch) return;
+  a->latch = on;
+  if (!on)   /* keep only the keys that are still down */
+    for (int i = a->nheld - 1; i >= 0; i--)
+      if (find(a->phys, a->nphys, a->held[i].ch, a->held[i].note) < 0) held_remove(a, a->held[i].ch, a->held[i].note);
+}
+
+void arp_release_all(ArpCore* a) { a->nheld = 0; a->nphys = 0; reset_order(a); }
 
 /* Held keys repeated over the octaves, notes above 127 dropped.
  * by_pitch: sorted by pitch (duplicates removed); otherwise octave by octave in press order. */

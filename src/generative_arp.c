@@ -16,7 +16,7 @@
 #define ARP_URI "urn:generativearp:arp"
 #define JUMP_TICKS 4.0   /* position difference treated as a relocation */
 
-enum { P_MIDI_IN = 0, P_MIDI_OUT = 1, P_RATE, P_GATE, P_ORDER, P_OCTAVES, P_END };
+enum { P_MIDI_IN = 0, P_MIDI_OUT = 1, P_RATE, P_GATE, P_ORDER, P_OCTAVES, P_LATCH, P_END };
 #define N_CTL (P_END - P_RATE)
 
 typedef struct { LV2_Atom_Event ev; uint8_t msg[3]; } MidiOut;
@@ -156,6 +156,7 @@ static void run(LV2_Handle h, uint32_t n) {
   A->nframes = n; A->cur_frame = 0;
   arp_set_params(&A->core, ctl_int(A, P_RATE, ARP_RATE_16), ctl_int(A, P_GATE, 50),
                  ctl_int(A, P_ORDER, ARP_UP), ctl_int(A, P_OCTAVES, 1));
+  arp_set_latch(&A->core, ctl_int(A, P_LATCH, 0) != 0);
 
   LV2_ATOM_SEQUENCE_FOREACH(A->in, ev) {
     uint32_t f = (uint32_t)ev->time.frames;
