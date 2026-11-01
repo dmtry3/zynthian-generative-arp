@@ -201,6 +201,7 @@ void arp_silence(ArpCore* a, double tick, arp_emit_fn emit, void* user) {
 static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   if (a->nheld == 0) {
     if (a->sounding && a->tied) note_off_at(a, s, emit, user);   /* a tie has nothing to go to */
+    a->cur_step = 0;
     return;
   }
   ArpNote pat[ARP_MAX_PAT];
@@ -210,6 +211,7 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   a->has_last = 1; a->last_ch = n->ch; a->last_note = n->note;
 
   const ArpStep* st = &a->steps[a->step_pos % a->length];
+  a->cur_step = a->step_pos % a->length + 1;
   a->step_pos = (a->step_pos + 1) % a->length;
 
   int play = st->prob >= 100 || (st->prob > 0 && (int)(rnd(a) % 100u) < st->prob);

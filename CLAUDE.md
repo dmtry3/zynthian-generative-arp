@@ -28,20 +28,24 @@
 - Зависимости: `gcc`, `pkg-config`, `lv2-dev` (в WSL ещё `lilv-utils` для `lv2ls`/`lv2info`).
 - Плагин: URI `urn:generativearp:arp`, бандл `generative_arp.lv2`, имя в Zynthian «Generative Arp».
 - Исходники: `src/generative_arp.c` (обёртка LV2, транспорт), `src/arp_core.c/.h` (логика без LV2),
-  `lv2/manifest.ttl`, `lv2/generative_arp.ttl`.
+  `lv2/manifest.ttl`, `lv2/generative_arp.ttl`, виджет `ui/zynthian_widget_generative_arp.py`
+  (Zynthian находит его по имени плагина: «Generative Arp» → `zynthian_widget_generative_arp.py`).
 - Сборка: `./scripts/build.sh` → `build/generative_arp.lv2/` (ttl + `generative_arp.so`).
 - Тесты логики (WSL, без LV2): `./scripts/test.sh` → собирает `build_test/test_arp` из `test/test_arp.c` + `arp_core.c`.
+- Виджет без Zynthian (WSL, нужен `python3-tk`): `python3 test/widget_preview.py` — сценарий касаний с проверками;
+  `--show` — открыть окно и потрогать руками (заглушки модулей zyngui внутри скрипта).
 - Установка на Zynthian (собирается прямо на устройстве):
   ```bash
   git clone <repo> && cd zynthian-generative-arp
-  sudo ./scripts/install.sh        # build + symlink /usr/local/lib/lv2/generative_arp.lv2 -> build/generative_arp.lv2
+  sudo ./scripts/install.sh        # build + symlinks: /usr/local/lib/lv2/generative_arp.lv2 -> build/generative_arp.lv2,
+                                   # /zynthian/zynthian-ui/zyngui/widgets_user/zynthian_widget_generative_arp.py -> ui/...
   sudo systemctl restart zynthian
   ```
   Каталог можно переопределить: `LV2_DIR=... ./scripts/install.sh`.
   После пересборки (`./scripts/build.sh`) достаточно перезапустить zynthian: ссылка уже указывает на `build/`.
 - Проверка: `lv2ls | grep generativearp`, `lv2info urn:generativearp:arp`.
 - В Zynthian: добавить в цепочку как MIDI tool перед синтом.
-- Удаление: `sudo ./scripts/uninstall.sh` (удаляет только ссылку).
+- Удаление: `sudo ./scripts/uninstall.sh` (удаляет только ссылки).
 
 ## План этапов
 1. Пустой плагин: собирается, ставится, пропускает MIDI насквозь.

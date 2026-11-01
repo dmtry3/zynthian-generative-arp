@@ -47,6 +47,7 @@ typedef struct {
   int dir;                      /* +1 / -1 for Up-Down and Down-Up */
   uint32_t played_idx;          /* As played position */
   int step_pos;                 /* next pattern step */
+  int cur_step;                 /* step of the last grid step, 1..16; 0 when idle (for display) */
   uint32_t rng;
 
   int sounding;                 /* a generated note is on */

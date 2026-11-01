@@ -17,7 +17,8 @@
 #define JUMP_TICKS 4.0   /* position difference treated as a relocation */
 
 enum { P_MIDI_IN = 0, P_MIDI_OUT = 1, P_RATE, P_GATE, P_ORDER, P_OCTAVES, P_LATCH, P_LENGTH,
-       P_STEP0, P_END = P_STEP0 + 4 * ARP_MAX_STEPS };   /* per step: prob, shift, vel, gate */
+       P_STEP0, P_END = P_STEP0 + 4 * ARP_MAX_STEPS,     /* per step: prob, shift, vel, gate */
+       P_CUR_STEP = P_END };                              /* output: playing step for the widget */
 #define N_CTL (P_END - P_RATE)
 
 typedef struct { LV2_Atom_Event ev; uint8_t msg[3]; } MidiOut;
@@ -26,6 +27,7 @@ typedef struct {
   const LV2_Atom_Sequence* in;
   LV2_Atom_Sequence* out;
   const float* ctl[N_CTL];
+  float* cur_step_out;
   uint32_t out_cap, nframes, cur_frame;
   LV2_URID_Map* map;
   LV2_URID midi_Event, atom_Object, atom_Float, atom_Double, atom_Long, atom_Int;
@@ -139,6 +141,7 @@ static void connect_port(LV2_Handle h, uint32_t port, void* data) {
   if (port == P_MIDI_IN) A->in = (const LV2_Atom_Sequence*)data;
   else if (port == P_MIDI_OUT) A->out = (LV2_Atom_Sequence*)data;
   else if (port >= P_RATE && port < P_END) A->ctl[port - P_RATE] = (const float*)data;
+  else if (port == P_CUR_STEP) A->cur_step_out = (float*)data;
 }
 
 static int ctl_int(const Arp* A, int port, int def) {
@@ -177,6 +180,7 @@ static void run(LV2_Handle h, uint32_t n) {
     }
   }
   advance_to(A, n);
+  if (A->cur_step_out) *A->cur_step_out = (float)A->core.cur_step;
 }
 
 static void cleanup(LV2_Handle h) { free(h); }

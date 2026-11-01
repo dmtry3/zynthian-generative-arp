@@ -544,6 +544,21 @@ static void test_pattern_reset_and_length(void) {
   { static const int e[] = { 79, 72, 76 }; expect("Length changed on the fly", g, n, e, 3); }
 }
 
+static void test_cur_step(void) {
+  ArpCore a; Log l = {0}; arp_init(&a);
+  int ok = (a.cur_step == 0);
+  chord(&a); arp_set_length(&a, 3);
+  arp_set_step(&a, 1, 0, 0, 100, 0);           /* silent step still shows as playing position */
+  int seen[5];
+  for (int k = 0; k < 5; k++) { arp_process(&a, 240.0 * k, 240.0 * k + 1, collect, &l); seen[k] = a.cur_step; }
+  ok = ok && seen[0] == 1 && seen[1] == 2 && seen[2] == 3 && seen[3] == 1 && seen[4] == 2;
+  arp_note_off(&a, 0, 60); arp_note_off(&a, 0, 64); arp_note_off(&a, 0, 67);
+  arp_process(&a, 1200, 1201, collect, &l);
+  ok = ok && a.cur_step == 0;
+  printf("%s: cur_step follows the pattern (1 2 3 1 2), 0 when idle\n", ok ? "PASS" : "FAIL");
+  if (!ok) failures++;
+}
+
 int main(void) {
   test_up_one_block();
   test_chunks();
@@ -569,6 +584,7 @@ int main(void) {
   test_step_gate();
   test_tie();
   test_pattern_reset_and_length();
+  test_cur_step();
   printf(failures ? "\n%d FAILED\n" : "\nALL PASSED\n", failures);
   return failures ? 1 : 0;
 }
