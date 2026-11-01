@@ -21,7 +21,23 @@
 - Работать маленькими шагами. Не делать следующий этап, пока текущий не проверен.
 
 ## Сборка и установка
-(заполнить по образцу zynthian-midi-looper)
+По образцу zynthian-midi-looper: без Makefile, сборка скриптами в `scripts/`.
+
+- Зависимости: `gcc`, `pkg-config`, `lv2-dev` (в WSL ещё `lilv-utils` для `lv2ls`/`lv2info`).
+- Плагин: URI `urn:generativearp:arp`, бандл `generative_arp.lv2`, имя в Zynthian «Generative Arp».
+- Исходники: `src/generative_arp.c`, `lv2/manifest.ttl`, `lv2/generative_arp.ttl`.
+- Сборка: `./scripts/build.sh` → `build/generative_arp.lv2/` (ttl + `generative_arp.so`).
+- Установка на Zynthian (собирается прямо на устройстве):
+  ```bash
+  git clone <repo> && cd zynthian-generative-arp
+  sudo ./scripts/install.sh        # build + symlink /usr/local/lib/lv2/generative_arp.lv2 -> build/generative_arp.lv2
+  sudo systemctl restart zynthian
+  ```
+  Каталог можно переопределить: `LV2_DIR=... ./scripts/install.sh`.
+  После пересборки (`./scripts/build.sh`) достаточно перезапустить zynthian: ссылка уже указывает на `build/`.
+- Проверка: `lv2ls | grep generativearp`, `lv2info urn:generativearp:arp`.
+- В Zynthian: добавить в цепочку как MIDI tool перед синтом.
+- Удаление: `sudo ./scripts/uninstall.sh` (удаляет только ссылку).
 
 ## План этапов
 1. Пустой плагин: собирается, ставится, пропускает MIDI насквозь.
