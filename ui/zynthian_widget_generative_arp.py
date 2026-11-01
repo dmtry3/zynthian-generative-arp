@@ -14,7 +14,7 @@ MULTI_INSTANCE = True
 
 NSTEPS = 16
 GATE_VALUES = [0] + list(range(5, 101, 5)) + [101]      # Global, 5..100 %, Tie
-# key, tab title, min, max, default
+# key, tab title, min, max, default; each row has its own length port len_<key> (polyrhythm)
 LANES = [
     ("prob", "Prob", 0, 100, 100),
     ("shift", "Shift", -24, 24, 0),
@@ -78,6 +78,9 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
             logging.debug("Generative Arp widget: can't set %s => %s", sym, e)
             return False
 
+    def _lane_len(self, lane):
+        return min(max(int(round(self._zval("len_" + LANES[lane][0], NSTEPS))), 1), NSTEPS)
+
     def _step_val(self, lane, i):
         key, _, lo, hi, dflt = LANES[lane]
         return int(round(self._zval("%s%d" % (key, i + 1), dflt)))
@@ -120,16 +123,16 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
         w, h, pad, tab_h, num_h, x0, x1, y0, y1, cw = self.geo
         if event.y < tab_h:                                  # lane tabs
             self.last_tap = (-1, -1, 0.0)
-            tw = (w * 0.72) / len(LANES)
+            tw = w / float(len(LANES))
             i = int(event.x / tw)
             if 0 <= i < len(LANES):
                 self.lane = i
                 self._draw()
             return
         col = self._col_at(event.x)
-        if event.y > y1:                                     # step numbers: set Length
+        if event.y > y1:                                     # step numbers: length of this row
             self.last_tap = (-1, -1, 0.0)
-            self._zset("length", col + 1)
+            self._zset("len_" + LANES[self.lane][0], col + 1)
             self._draw()
             return
         now = time.monotonic()
@@ -191,24 +194,23 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
 
         m = self.monitors or {}
         try:
-            cur = int(m.get("cur_step", 0))
+            count = int(m.get("step_count", 0))
         except Exception:
-            cur = 0
-        length = int(round(self._zval("length", NSTEPS)))
+            count = 0
         lane = self.lane
+        length = self._lane_len(lane)
+        cur = (count - 1) % length + 1 if count > 0 else 0     # step playing in this row
         key, title, lo, hi, dflt = LANES[lane]
         col = LANE_COLORS[lane]
 
         # tabs
-        tw = (w * 0.72) / len(LANES)
+        tw = w / float(len(LANES))
         for i, (_, t, _, _, _) in enumerate(LANES):
             sel = (i == lane)
             c.create_rectangle(int(i * tw) + 1, 1, int((i + 1) * tw) - 2, tab_h - 2, tags="dyn",
                                fill=(LANE_COLORS[i] if sel else ""), outline=LANE_COLORS[i])
-            c.create_text(int((i + 0.5) * tw), tab_h // 2, text=t, tags="dyn",
+            c.create_text(int((i + 0.5) * tw), tab_h // 2, text="%s %d" % (t, self._lane_len(i)), tags="dyn",
                           fill=("#000000" if sel else LANE_COLORS[i]), font=(fam, fs_tab))
-        c.create_text(w - pad, tab_h // 2, anchor="e", text="Len %d" % length, tags="dyn",
-                      fill=tx, font=(fam, fs_tab))
 
         # reference lines
         def yv(v):

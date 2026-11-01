@@ -11,6 +11,9 @@
 #define ARP_GATE_GLOBAL 0     /* step gate: use the global Gate */
 #define ARP_GATE_TIE 101      /* step gate: legato into the next step */
 
+/* Rows (lanes) of the pattern; each has its own length (polyrhythm). */
+enum { ARP_LANE_PROB, ARP_LANE_SHIFT, ARP_LANE_VEL, ARP_LANE_GATE, ARP_NLANES };
+
 enum { ARP_RATE_4, ARP_RATE_8, ARP_RATE_8T, ARP_RATE_16, ARP_RATE_16T, ARP_RATE_32, ARP_NRATES };
 enum { ARP_UP, ARP_DOWN, ARP_UPDOWN, ARP_DOWNUP, ARP_PLAYED, ARP_RANDOM, ARP_NORDERS };
 
@@ -39,15 +42,15 @@ typedef struct {
   int rate, gate_pct, order, octaves;
   int step_ticks, gate_ticks;
   ArpStep steps[ARP_MAX_STEPS];
-  int length;                   /* pattern length 1..16 */
+  int lane_len[ARP_NLANES];     /* length of each row 1..16 */
 
   /* note order state; reset when all keys are released */
   int has_last;                 /* last played pitch valid */
   uint8_t last_ch, last_note;
   int dir;                      /* +1 / -1 for Up-Down and Down-Up */
   uint32_t played_idx;          /* As played position */
-  int step_pos;                 /* next pattern step */
-  int cur_step;                 /* step of the last grid step, 1..16; 0 when idle (for display) */
+  uint32_t count;               /* grid steps since the pattern restarted; row r uses step count % lane_len[r] */
+  uint32_t step_count;          /* number of the last step (1-based) for display; 0 when idle */
   uint32_t rng;
 
   int sounding;                 /* a generated note is on */
@@ -60,7 +63,8 @@ void arp_init(ArpCore* a);
 /* Values are clamped. Rate/order take effect on the next step, gate on the next note. */
 void arp_set_params(ArpCore* a, int rate, int gate_pct, int order, int octaves);
 void arp_seed(ArpCore* a, uint32_t seed);
-/* Pattern: length 1..16 and settings of step i (0-based). Values are clamped. */
+/* Pattern: length 1..16 of one row, of all rows, and settings of step i (0-based). Values are clamped. */
+void arp_set_lane_length(ArpCore* a, int lane, int length);
 void arp_set_length(ArpCore* a, int length);
 void arp_set_step(ArpCore* a, int i, int prob, int shift, int vel, int gate);
 /* Latch on: the chord stays after the keys are released; the next chord (pressed after all keys

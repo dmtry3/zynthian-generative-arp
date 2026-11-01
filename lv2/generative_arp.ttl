@@ -12,11 +12,12 @@
 
 <urn:generativearp:arp#g_arp> a pg:Group ; lv2:symbol "g_arp" ; lv2:name "Arp" ; lv2:index 0 ; lv2:displayPriority 60 .
 <urn:generativearp:arp#g_pattern> a pg:Group ; lv2:symbol "g_pattern" ; lv2:name "Pattern" ; lv2:index 1 ; lv2:displayPriority 50 .
+<urn:generativearp:arp#g_lengths> a pg:Group ; lv2:symbol "g_lengths" ; lv2:name "Lengths" ; lv2:index 2 ; lv2:displayPriority 40 .
 
 <urn:generativearp:arp>
     a lv2:Plugin , lv2:UtilityPlugin ;
     doap:name "Generative Arp" ;
-    lv2:minorVersion 8 ;
+    lv2:minorVersion 9 ;
     lv2:microVersion 0 ;
     lv2:requiredFeature urid:map ;
     patch:writable
@@ -44,12 +45,12 @@
         atom:bufferType atom:Sequence ;
         atom:supports midi:MidiEvent , time:Position , patch:Message ;
         lv2:designation lv2:control ;
-        lv2:index 6 ; lv2:symbol "midi_in" ; lv2:name "MIDI In" ;
+        lv2:index 9 ; lv2:symbol "midi_in" ; lv2:name "MIDI In" ;
     ] , [
         a lv2:OutputPort , atom:AtomPort ;
         atom:bufferType atom:Sequence ;
         atom:supports midi:MidiEvent , patch:Message ;
-        lv2:index 7 ; lv2:symbol "midi_out" ; lv2:name "MIDI Out" ;
+        lv2:index 10 ; lv2:symbol "midi_out" ; lv2:name "MIDI Out" ;
     ] , [
         a lv2:InputPort , lv2:ControlPort ;
         lv2:index 0 ; lv2:symbol "rate" ; lv2:name "Rate" ;
@@ -85,13 +86,28 @@
         lv2:displayPriority 40 ; pg:group <urn:generativearp:arp#g_pattern> ;
     ] , [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 5 ; lv2:symbol "length" ; lv2:name "Length" ;
+        lv2:index 5 ; lv2:symbol "len_prob" ; lv2:name "Prob len" ;
         lv2:default 16 ; lv2:minimum 1 ; lv2:maximum 16 ; lv2:portProperty lv2:integer ;
-        lv2:displayPriority 30 ; pg:group <urn:generativearp:arp#g_pattern> ;
+        lv2:displayPriority 40 ; pg:group <urn:generativearp:arp#g_lengths> ;
+    ] , [
+        a lv2:InputPort , lv2:ControlPort ;
+        lv2:index 6 ; lv2:symbol "len_shift" ; lv2:name "Shift len" ;
+        lv2:default 16 ; lv2:minimum 1 ; lv2:maximum 16 ; lv2:portProperty lv2:integer ;
+        lv2:displayPriority 30 ; pg:group <urn:generativearp:arp#g_lengths> ;
+    ] , [
+        a lv2:InputPort , lv2:ControlPort ;
+        lv2:index 7 ; lv2:symbol "len_vel" ; lv2:name "Vel len" ;
+        lv2:default 16 ; lv2:minimum 1 ; lv2:maximum 16 ; lv2:portProperty lv2:integer ;
+        lv2:displayPriority 20 ; pg:group <urn:generativearp:arp#g_lengths> ;
+    ] , [
+        a lv2:InputPort , lv2:ControlPort ;
+        lv2:index 8 ; lv2:symbol "len_gate" ; lv2:name "Gate len" ;
+        lv2:default 16 ; lv2:minimum 1 ; lv2:maximum 16 ; lv2:portProperty lv2:integer ;
+        lv2:displayPriority 10 ; pg:group <urn:generativearp:arp#g_lengths> ;
     ] , [
         a lv2:OutputPort , lv2:ControlPort ;
-        lv2:index 8 ; lv2:symbol "cur_step" ; lv2:name "Step" ;
-        lv2:default 0 ; lv2:minimum 0 ; lv2:maximum 16 ; lv2:portProperty lv2:integer ;
+        lv2:index 11 ; lv2:symbol "step_count" ; lv2:name "Step count" ;
+        lv2:default 0 ; lv2:minimum 0 ; lv2:maximum 16777215 ; lv2:portProperty lv2:integer ;
     ] .
 
 # Pattern step values: LV2 parameters (patch:Set), hidden from the encoder pages, edited by the widget.

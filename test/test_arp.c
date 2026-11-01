@@ -544,19 +544,78 @@ static void test_pattern_reset_and_length(void) {
   { static const int e[] = { 79, 72, 76 }; expect("Length changed on the fly", g, n, e, 3); }
 }
 
-static void test_cur_step(void) {
+static void test_step_count(void) {
   ArpCore a; Log l = {0}; arp_init(&a);
-  int ok = (a.cur_step == 0);
+  int ok = (a.step_count == 0);
   chord(&a); arp_set_length(&a, 3);
-  arp_set_step(&a, 1, 0, 0, 100, 0);           /* silent step still shows as playing position */
-  int seen[5];
-  for (int k = 0; k < 5; k++) { arp_process(&a, 240.0 * k, 240.0 * k + 1, collect, &l); seen[k] = a.cur_step; }
-  ok = ok && seen[0] == 1 && seen[1] == 2 && seen[2] == 3 && seen[3] == 1 && seen[4] == 2;
+  arp_set_step(&a, 1, 0, 0, 100, 0);           /* a silent step still counts */
+  uint32_t seen[5];
+  for (int k = 0; k < 5; k++) { arp_process(&a, 240.0 * k, 240.0 * k + 1, collect, &l); seen[k] = a.step_count; }
+  ok = ok && seen[0] == 1 && seen[1] == 2 && seen[2] == 3 && seen[3] == 4 && seen[4] == 5;
   arp_note_off(&a, 0, 60); arp_note_off(&a, 0, 64); arp_note_off(&a, 0, 67);
   arp_process(&a, 1200, 1201, collect, &l);
-  ok = ok && a.cur_step == 0;
-  printf("%s: cur_step follows the pattern (1 2 3 1 2), 0 when idle\n", ok ? "PASS" : "FAIL");
+  ok = ok && a.step_count == 0;
+  printf("%s: step_count counts steps since restart (1..5), 0 when idle\n", ok ? "PASS" : "FAIL");
   if (!ok) failures++;
+}
+
+/* ---------- stage 5: row lengths (polyrhythm) ---------- */
+
+static void test_lane_lengths(void) {
+  ArpCore a; Log l = {0}; arp_init(&a);
+  arp_note_on(&a, 0, 60, 100);
+  arp_set_lane_length(&a, ARP_LANE_SHIFT, 3);
+  arp_set_lane_length(&a, ARP_LANE_VEL, 5);
+  arp_set_step(&a, 2, 100, 12, 100, 0);        /* shift row: step 3 = +12 */
+  arp_set_step(&a, 4, 100, 0, 50, 0);          /* vel row: step 5 = 50% */
+  arp_process(&a, 0, 240 * 15, collect, &l);
+  int pitch[15], vel[15], k = 0;
+  for (int i = 0; i < l.n; i++)
+    if ((l.ev[i].st & 0xF0) == 0x90 && k < 15) { pitch[k] = l.ev[i].d1; vel[k] = l.ev[i].d2; k++; }
+  int ok = (k == 15);
+  for (int i = 0; ok && i < 15; i++) {
+    int ep = (i % 3 == 2) ? 72 : 60;           /* every 3rd step */
+    int ev = (i % 5 == 4) ? 50 : 100;          /* every 5th step */
+    if (pitch[i] != ep || vel[i] != ev) ok = 0;
+  }
+  printf("%s: Shift length 3 and Vel length 5 run independently (step 15: both)\n", ok ? "PASS" : "FAIL");
+  if (!ok) {
+    printf("  got:"); for (int i = 0; i < k; i++) printf(" %d/%d", pitch[i], vel[i]); printf("\n");
+    failures++;
+  }
+  ok = ok && pitch[14] == 72 && vel[14] == 50;
+  printf("%s: rows meet again after 15 steps (3 x 5)\n", ok ? "PASS" : "FAIL");
+  if (!ok) failures++;
+}
+
+static void test_lane_prob_gate(void) {
+  ArpCore a; Log l = {0}; arp_init(&a);
+  arp_note_on(&a, 0, 60, 100);
+  arp_set_lane_length(&a, ARP_LANE_PROB, 2);
+  arp_set_lane_length(&a, ARP_LANE_GATE, 3);
+  arp_set_step(&a, 1, 0, 0, 100, 0);           /* prob row (len 2): step 2 silent */
+  arp_set_step(&a, 0, 100, 0, 100, 25);        /* gate row (len 3): step 1 = 25% (60 ticks); prob row step 1 = 100 */
+  arp_process(&a, 0, 240 * 6, collect, &l);
+  /* steps 1..6: prob idx 0 1 0 1 0 1 -> play on 1,3,5; gate idx 0 1 2 0 1 2 -> step 1: 60, 3: global 120, 5: global 120 */
+  static const double exp[][3] = { {0, 1, 60}, {60, 0, 60}, {480, 1, 60}, {600, 0, 60}, {960, 1, 60}, {1080, 0, 60} };
+  check("Prob length 2 and Gate length 3 run independently", &l, exp, 6);
+}
+
+static void test_lane_reset_and_change(void) {
+  int g[64], n;
+  ArpCore a; arp_init(&a);
+  arp_note_on(&a, 0, 60, 100);
+  arp_set_lane_length(&a, ARP_LANE_SHIFT, 3);
+  arp_set_step(&a, 0, 100, 1, 100, 0);
+  arp_set_step(&a, 1, 100, 2, 100, 0);
+  arp_set_step(&a, 2, 100, 3, 100, 0);
+  n = play(&a, 0, 240 * 2, g);                 /* 61 62 */
+  arp_note_off(&a, 0, 60); arp_note_on(&a, 0, 60, 100);
+  n = play(&a, 480, 480 + 240 * 4, g);         /* restart: 61 62 63 61 */
+  { static const int e[] = { 61, 62, 63, 61 }; expect("all rows restart at step 1 after keys released", g, n, e, 4); }
+  arp_set_lane_length(&a, ARP_LANE_SHIFT, 2);  /* 4 steps since restart: count 4 -> 4 % 2 = 0 -> step 1 */
+  n = play(&a, 1440, 1440 + 240 * 3, g);
+  { static const int e[] = { 61, 62, 61 }; expect("row length changed on the fly follows count % length", g, n, e, 3); }
 }
 
 int main(void) {
@@ -584,7 +643,10 @@ int main(void) {
   test_step_gate();
   test_tie();
   test_pattern_reset_and_length();
-  test_cur_step();
+  test_step_count();
+  test_lane_lengths();
+  test_lane_prob_gate();
+  test_lane_reset_and_change();
   printf(failures ? "\n%d FAILED\n" : "\nALL PASSED\n", failures);
   return failures ? 1 : 0;
 }

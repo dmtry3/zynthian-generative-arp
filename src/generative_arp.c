@@ -20,8 +20,9 @@
 
 /* Control input ports come first (0..5): Zynthian numbers LV2 parameters from len(control ports)+1,
  * so a control port with a higher index would be overwritten by a parameter in its list. */
-enum { P_RATE = 0, P_GATE, P_ORDER, P_OCTAVES, P_LATCH, P_LENGTH, P_END,
-       P_MIDI_IN = P_END, P_MIDI_OUT, P_CUR_STEP };       /* cur_step: output, playing step for the widget */
+enum { P_RATE = 0, P_GATE, P_ORDER, P_OCTAVES, P_LATCH,
+       P_LEN0, P_END = P_LEN0 + ARP_NLANES,               /* row lengths: prob, shift, vel, gate */
+       P_MIDI_IN = P_END, P_MIDI_OUT, P_STEP_COUNT };     /* step_count: output, for the widget */
 
 /* Pattern step values are LV2 parameters (patch:Set on midi_in), not ports: Zynthian's jalv does not
  * register notOnGUI ports, but it does register parameters. Order of fields per step: */
@@ -36,7 +37,7 @@ typedef struct {
   const LV2_Atom_Sequence* in;
   LV2_Atom_Sequence* out;
   const float* ctl[N_CTL];
-  float* cur_step_out;
+  float* step_count_out;
   uint32_t out_cap, nframes, cur_frame;
   LV2_URID_Map* map;
   LV2_URID map_urid_type;
@@ -184,7 +185,7 @@ static void connect_port(LV2_Handle h, uint32_t port, void* data) {
   if (port == P_MIDI_IN) A->in = (const LV2_Atom_Sequence*)data;
   else if (port == P_MIDI_OUT) A->out = (LV2_Atom_Sequence*)data;
   else if (port < P_END) A->ctl[port - P_RATE] = (const float*)data;
-  else if (port == P_CUR_STEP) A->cur_step_out = (float*)data;
+  else if (port == P_STEP_COUNT) A->step_count_out = (float*)data;
 }
 
 static int ctl_int(const Arp* A, int port, int def) {
@@ -204,7 +205,7 @@ static void run(LV2_Handle h, uint32_t n) {
   arp_set_params(&A->core, ctl_int(A, P_RATE, ARP_RATE_16), ctl_int(A, P_GATE, 50),
                  ctl_int(A, P_ORDER, ARP_UP), ctl_int(A, P_OCTAVES, 1));
   arp_set_latch(&A->core, ctl_int(A, P_LATCH, 0) != 0);
-  arp_set_length(&A->core, ctl_int(A, P_LENGTH, ARP_MAX_STEPS));
+  for (int r = 0; r < ARP_NLANES; r++) arp_set_lane_length(&A->core, r, ctl_int(A, P_LEN0 + r, ARP_MAX_STEPS));
 
   LV2_ATOM_SEQUENCE_FOREACH(A->in, ev) {
     uint32_t f = (uint32_t)ev->time.frames;
@@ -219,7 +220,7 @@ static void run(LV2_Handle h, uint32_t n) {
     }
   }
   advance_to(A, n);
-  if (A->cur_step_out) *A->cur_step_out = (float)A->core.cur_step;
+  if (A->step_count_out) *A->step_count_out = (float)(A->core.step_count & 0xFFFFFFu);
 }
 
 static void cleanup(LV2_Handle h) { free(h); }

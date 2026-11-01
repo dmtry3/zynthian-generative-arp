@@ -16,7 +16,13 @@ void arp_init(ArpCore* a) {
   for (int i = 0; i < ARP_MAX_STEPS; i++) arp_set_step(a, i, 100, 0, 100, ARP_GATE_GLOBAL);
 }
 
-void arp_set_length(ArpCore* a, int length) { a->length = clampi(length, 1, ARP_MAX_STEPS); }
+void arp_set_lane_length(ArpCore* a, int lane, int length) {
+  if (lane >= 0 && lane < ARP_NLANES) a->lane_len[lane] = clampi(length, 1, ARP_MAX_STEPS);
+}
+
+void arp_set_length(ArpCore* a, int length) {
+  for (int r = 0; r < ARP_NLANES; r++) arp_set_lane_length(a, r, length);
+}
 
 void arp_set_step(ArpCore* a, int i, int prob, int shift, int vel, int gate) {
   if (i < 0 || i >= ARP_MAX_STEPS) return;
@@ -49,7 +55,7 @@ static int key_less(uint8_t n1, uint8_t c1, uint8_t n2, uint8_t c2) {
   return n1 != n2 ? n1 < n2 : c1 < c2;
 }
 
-static void reset_order(ArpCore* a) { a->has_last = 0; a->played_idx = 0; a->step_pos = 0; }
+static void reset_order(ArpCore* a) { a->has_last = 0; a->played_idx = 0; a->count = 0; }
 
 static int find(const ArpNote* v, int n, uint8_t ch, uint8_t note) {
   for (int i = 0; i < n; i++) if (v[i].ch == ch && v[i].note == note) return i;
@@ -201,7 +207,7 @@ void arp_silence(ArpCore* a, double tick, arp_emit_fn emit, void* user) {
 static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   if (a->nheld == 0) {
     if (a->sounding && a->tied) note_off_at(a, s, emit, user);   /* a tie has nothing to go to */
-    a->cur_step = 0;
+    a->step_count = 0;
     return;
   }
   ArpNote pat[ARP_MAX_PAT];
@@ -210,18 +216,22 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   const ArpNote* n = &pat[pick(a, pat, m)];              /* the note order advances even if the step is silent */
   a->has_last = 1; a->last_ch = n->ch; a->last_note = n->note;
 
-  const ArpStep* st = &a->steps[a->step_pos % a->length];
-  a->cur_step = a->step_pos % a->length + 1;
-  a->step_pos = (a->step_pos + 1) % a->length;
+  /* each row reads its own step */
+  const int prob  = a->steps[a->count % (uint32_t)a->lane_len[ARP_LANE_PROB]].prob;
+  const int shift = a->steps[a->count % (uint32_t)a->lane_len[ARP_LANE_SHIFT]].shift;
+  const int velp  = a->steps[a->count % (uint32_t)a->lane_len[ARP_LANE_VEL]].vel;
+  const int gate  = a->steps[a->count % (uint32_t)a->lane_len[ARP_LANE_GATE]].gate;
+  a->count++;
+  a->step_count = a->count;
 
-  int play = st->prob >= 100 || (st->prob > 0 && (int)(rnd(a) % 100u) < st->prob);
-  int pitch = n->note + st->shift;
+  int play = prob >= 100 || (prob > 0 && (int)(rnd(a) % 100u) < prob);
+  int pitch = n->note + shift;
   if (pitch < 0 || pitch > 127) play = 0;
   if (!play) {
     if (a->sounding) note_off_at(a, s, emit, user);
     return;
   }
-  int vel = n->vel * st->vel / 100;
+  int vel = n->vel * velp / 100;
   vel = clampi(vel, 1, 127);
 
   if (a->sounding && a->tied && a->on_note == pitch && a->on_ch == n->ch) {
@@ -235,11 +245,11 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
     emit(user, s, (uint8_t)(0x90 | n->ch), (uint8_t)pitch, (uint8_t)vel);
   }
   a->sounding = 1; a->on_ch = n->ch; a->on_note = (uint8_t)pitch;
-  if (st->gate == ARP_GATE_TIE) {
+  if (gate == ARP_GATE_TIE) {
     a->tied = 1;
     a->off_tick = INFINITY;                             /* ends at the next step */
   } else {
-    int g = (st->gate == ARP_GATE_GLOBAL) ? a->gate_ticks : a->step_ticks * st->gate / 100;
+    int g = (gate == ARP_GATE_GLOBAL) ? a->gate_ticks : a->step_ticks * gate / 100;
     a->tied = 0;
     a->off_tick = s + (g < 1 ? 1 : g);
   }

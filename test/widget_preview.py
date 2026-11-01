@@ -76,10 +76,10 @@ class Ctrl:
 
 class Engine:
     def __init__(self):
-        self.cur_step = 3
+        self.step_count = 7
 
     def get_monitors_dict(self):
-        return {"cur_step": self.cur_step}
+        return {"step_count": self.step_count}
 
 
 class Processor:
@@ -87,7 +87,7 @@ class Processor:
         gate_ticks = [0] + list(range(5, 101, 5)) + [101]
         self.engine = Engine()
         self.id = 1
-        self.controllers_dict = {"length": Ctrl("length", 8, 1, 16)}
+        self.controllers_dict = {k: Ctrl(k, 16, 1, 16) for k in ("len_prob", "len_shift", "len_vel", "len_gate")}
         for i in range(1, 17):
             self.controllers_dict["prob%d" % i] = Ctrl("prob%d" % i, 100, 0, 100)
             self.controllers_dict["shift%d" % i] = Ctrl("shift%d" % i, 0, -24, 24)
@@ -134,7 +134,7 @@ def main():
 
     if show:
         def tick():
-            proc.engine.cur_step = proc.engine.cur_step % int(proc.v("length")) + 1
+            proc.engine.step_count += 1
             wdg.update()
             root.after(250, tick)
         tick()
@@ -150,7 +150,7 @@ def main():
 
     w, h, pad, tab_h, num_h, x0, x1, y0, y1, cw = wdg.geo
     cx = lambda i: int(x0 + (i + 0.5) * cw)
-    tab = lambda i: int((w * 0.72) / 4 * (i + 0.5))
+    tab = lambda i: int(w / 4.0 * (i + 0.5))
 
     check("widget sized to the window", w >= 400 and h >= 250)
 
@@ -208,21 +208,46 @@ def main():
     wdg._on_press(Ev(cx(0), (y0 + y1) / 2.0)); wdg._on_release(None)
     check("vel: middle = 100%", proc.v("vel1") == 100)
 
-    # step number row sets Length
-    wdg._on_press(Ev(cx(11), h - num_h // 2))
-    check("tap on step number 12 sets Length 12", proc.v("length") == 12)
+    # step number row sets the length of the open row only
+    wdg._on_press(Ev(tab(1), tab_h // 2))                         # Shift
+    wdg._on_press(Ev(cx(2), h - num_h // 2))
+    check("tap on step number 3 in Shift sets Shift length 3, others unchanged",
+          proc.v("len_shift") == 3 and proc.v("len_prob") == 16 and proc.v("len_vel") == 16 and proc.v("len_gate") == 16)
+    wdg._on_press(Ev(tab(2), tab_h // 2))                         # Vel
+    wdg._on_press(Ev(cx(4), h - num_h // 2))
+    check("tap on step number 5 in Vel sets Vel length 5", proc.v("len_vel") == 5)
 
     # no redundant writes: same value written again does nothing
-    before = proc.controllers_dict["length"].writes
-    wdg._on_press(Ev(cx(11), h - num_h // 2))
-    check("writing the same value again sends nothing", proc.controllers_dict["length"].writes == before)
+    before = proc.controllers_dict["len_vel"].writes
+    wdg._on_press(Ev(cx(4), h - num_h // 2))
+    check("writing the same value again sends nothing", proc.controllers_dict["len_vel"].writes == before)
+
+    # playhead per row: step_count 7 -> Vel (len 5): step 2, Shift (len 3): step 1, Prob (len 16): step 7
+    proc.engine.step_count = 7
+    texts = lambda: [wdg.widget_canvas.itemcget(t, "text") for t in wdg.widget_canvas.find_withtag("dyn")
+                     if wdg.widget_canvas.type(t) == "text"]
+    def playhead_col():
+        c = wdg.widget_canvas
+        for t in c.find_withtag("dyn"):
+            if c.type(t) == "rectangle" and c.itemcget(t, "outline") == "#ffffff":
+                x = c.coords(t)[0]
+                return int((x + 2 - x0) / cw) + 1
+        return 0
+    wdg.update(); p_vel = playhead_col()
+    wdg._on_press(Ev(tab(1), tab_h // 2)); wdg.update(); p_shift = playhead_col()
+    wdg._on_press(Ev(tab(0), tab_h // 2)); wdg.update(); p_prob = playhead_col()
+    check("playhead per row from step_count 7: Vel(5)=2, Shift(3)=1, Prob(16)=7 (got %d %d %d)" % (p_vel, p_shift, p_prob),
+          (p_vel, p_shift, p_prob) == (2, 1, 7))
+    check("tabs show every row length", {"Prob 16", "Shift 3", "Vel 5", "Gate 16"} <= set(texts()))
+    proc.engine.step_count = 0; wdg.update()
+    check("no playhead when idle", playhead_col() == 0)
 
     # drawing does not crash with the playing step and resizes
-    for cs in (0, 1, 16):
-        proc.engine.cur_step = cs
+    for cs in (0, 1, 16, 1000):
+        proc.engine.step_count = cs
         wdg.update()
     root.geometry("320x180"); root.update(); wdg.update(); root.update()
-    check("redraw at another size and playing steps 0/1/16", True)
+    check("redraw at another size and step counts 0/1/16/1000", True)
 
     print("\n%s" % ("ALL PASSED" if fails == 0 else "%d FAILED" % fails))
     root.destroy()
