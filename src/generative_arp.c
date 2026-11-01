@@ -16,13 +16,15 @@
 #define ARP_URI "urn:generativearp:arp"
 #define JUMP_TICKS 4.0   /* position difference treated as a relocation */
 
-enum { P_MIDI_IN = 0, P_MIDI_OUT = 1 };
+enum { P_MIDI_IN = 0, P_MIDI_OUT = 1, P_RATE, P_GATE, P_ORDER, P_OCTAVES, P_END };
+#define N_CTL (P_END - P_RATE)
 
 typedef struct { LV2_Atom_Event ev; uint8_t msg[3]; } MidiOut;
 
 typedef struct {
   const LV2_Atom_Sequence* in;
   LV2_Atom_Sequence* out;
+  const float* ctl[N_CTL];
   uint32_t out_cap, nframes, cur_frame;
   LV2_URID_Map* map;
   LV2_URID midi_Event, atom_Object, atom_Float, atom_Double, atom_Long, atom_Int;
@@ -127,6 +129,7 @@ static LV2_Handle instantiate(const LV2_Descriptor* d, double rate, const char* 
   A->time_bpb      = m->map(m->handle, LV2_TIME__beatsPerBar);
   A->sr = rate; A->bpm = 120.0; A->bpb = 4;
   arp_init(&A->core);
+  arp_seed(&A->core, (uint32_t)(uintptr_t)A ^ 0xA5A5A5A5u);
   return A;
 }
 
@@ -134,6 +137,12 @@ static void connect_port(LV2_Handle h, uint32_t port, void* data) {
   Arp* A = (Arp*)h;
   if (port == P_MIDI_IN) A->in = (const LV2_Atom_Sequence*)data;
   else if (port == P_MIDI_OUT) A->out = (LV2_Atom_Sequence*)data;
+  else if (port >= P_RATE && port < P_END) A->ctl[port - P_RATE] = (const float*)data;
+}
+
+static int ctl_int(const Arp* A, int port, int def) {
+  const float* p = A->ctl[port - P_RATE];
+  return p ? (int)lrintf(*p) : def;
 }
 
 static void activate(LV2_Handle h) { (void)h; }
@@ -145,6 +154,8 @@ static void run(LV2_Handle h, uint32_t n) {
   lv2_atom_sequence_clear(A->out);
   A->out->atom.type = A->in->atom.type;
   A->nframes = n; A->cur_frame = 0;
+  arp_set_params(&A->core, ctl_int(A, P_RATE, ARP_RATE_16), ctl_int(A, P_GATE, 50),
+                 ctl_int(A, P_ORDER, ARP_UP), ctl_int(A, P_OCTAVES, 1));
 
   LV2_ATOM_SEQUENCE_FOREACH(A->in, ev) {
     uint32_t f = (uint32_t)ev->time.frames;
