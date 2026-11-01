@@ -25,8 +25,10 @@
 
 - Зависимости: `gcc`, `pkg-config`, `lv2-dev` (в WSL ещё `lilv-utils` для `lv2ls`/`lv2info`).
 - Плагин: URI `urn:generativearp:arp`, бандл `generative_arp.lv2`, имя в Zynthian «Generative Arp».
-- Исходники: `src/generative_arp.c`, `lv2/manifest.ttl`, `lv2/generative_arp.ttl`.
+- Исходники: `src/generative_arp.c` (обёртка LV2, транспорт), `src/arp_core.c/.h` (логика без LV2),
+  `lv2/manifest.ttl`, `lv2/generative_arp.ttl`.
 - Сборка: `./scripts/build.sh` → `build/generative_arp.lv2/` (ttl + `generative_arp.so`).
+- Тесты логики (WSL, без LV2): `./scripts/test.sh` → собирает `build_test/test_arp` из `test/test_arp.c` + `arp_core.c`.
 - Установка на Zynthian (собирается прямо на устройстве):
   ```bash
   git clone <repo> && cd zynthian-generative-arp
