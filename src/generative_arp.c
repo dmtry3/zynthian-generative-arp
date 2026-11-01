@@ -5,10 +5,12 @@
 #include <lv2/atom/atom.h>
 #include <lv2/atom/util.h>
 #include <lv2/midi/midi.h>
+#include <lv2/patch/patch.h>
 #include <lv2/time/time.h>
 #include <lv2/urid/urid.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "arp_core.h"
@@ -16,9 +18,14 @@
 #define ARP_URI "urn:generativearp:arp"
 #define JUMP_TICKS 4.0   /* position difference treated as a relocation */
 
-enum { P_MIDI_IN = 0, P_MIDI_OUT = 1, P_RATE, P_GATE, P_ORDER, P_OCTAVES, P_LATCH, P_LENGTH,
-       P_STEP0, P_END = P_STEP0 + 4 * ARP_MAX_STEPS,     /* per step: prob, shift, vel, gate */
+enum { P_MIDI_IN = 0, P_MIDI_OUT = 1, P_RATE, P_GATE, P_ORDER, P_OCTAVES, P_LATCH, P_LENGTH, P_END,
        P_CUR_STEP = P_END };                              /* output: playing step for the widget */
+
+/* Pattern step values are LV2 parameters (patch:Set on midi_in), not ports: Zynthian's jalv does not
+ * register notOnGUI ports, but it does register parameters. Order of fields per step: */
+enum { F_PROB, F_SHIFT, F_VEL, F_GATE, N_FIELDS };
+static const char* const field_names[N_FIELDS] = { "prob", "shift", "vel", "gate" };
+static const int field_defaults[N_FIELDS] = { 100, 0, 100, ARP_GATE_GLOBAL };
 #define N_CTL (P_END - P_RATE)
 
 typedef struct { LV2_Atom_Event ev; uint8_t msg[3]; } MidiOut;
@@ -30,8 +37,12 @@ typedef struct {
   float* cur_step_out;
   uint32_t out_cap, nframes, cur_frame;
   LV2_URID_Map* map;
+  LV2_URID map_urid_type;
   LV2_URID midi_Event, atom_Object, atom_Float, atom_Double, atom_Long, atom_Int;
   LV2_URID time_Position, time_bar, time_barBeat, time_bpm, time_speed, time_bpb;
+  LV2_URID patch_Set, patch_property, patch_value;
+  LV2_URID param[ARP_MAX_STEPS][N_FIELDS];
+  int stepv[ARP_MAX_STEPS][N_FIELDS];
 
   double sr, clk, bpm;   /* clk: current position in ticks */
   int bpb, rolling;
@@ -90,6 +101,25 @@ static void handle_pos(Arp* A, const LV2_Atom_Object* obj) {
   A->clk = ht;
 }
 
+static void apply_step(Arp* A, int i) {
+  const int* v = A->stepv[i];
+  arp_set_step(&A->core, i, v[F_PROB], v[F_SHIFT], v[F_VEL], v[F_GATE]);
+}
+
+static void handle_patch_set(Arp* A, const LV2_Atom_Object* obj) {
+  const LV2_Atom *prop = NULL, *val = NULL;
+  lv2_atom_object_get(obj, A->patch_property, &prop, A->patch_value, &val, 0);
+  if (!prop || prop->type != A->map_urid_type || !val) return;
+  const LV2_URID key = ((const LV2_Atom_URID*)prop)->body;
+  for (int i = 0; i < ARP_MAX_STEPS; i++)
+    for (int f = 0; f < N_FIELDS; f++)
+      if (A->param[i][f] == key) {
+        A->stepv[i][f] = (int)lrint(numv(A, val, field_defaults[f]));
+        apply_step(A, i);
+        return;
+      }
+}
+
 static void handle_midi(Arp* A, const LV2_Atom_Event* ev) {
   const uint8_t* b = (const uint8_t*)LV2_ATOM_BODY_CONST(&ev->body);
   uint32_t sz = ev->body.size;
@@ -130,6 +160,17 @@ static LV2_Handle instantiate(const LV2_Descriptor* d, double rate, const char* 
   A->time_bpm      = m->map(m->handle, LV2_TIME__beatsPerMinute);
   A->time_speed    = m->map(m->handle, LV2_TIME__speed);
   A->time_bpb      = m->map(m->handle, LV2_TIME__beatsPerBar);
+  A->map_urid_type = m->map(m->handle, LV2_ATOM__URID);
+  A->patch_Set      = m->map(m->handle, LV2_PATCH__Set);
+  A->patch_property = m->map(m->handle, LV2_PATCH__property);
+  A->patch_value    = m->map(m->handle, LV2_PATCH__value);
+  for (int i = 0; i < ARP_MAX_STEPS; i++)
+    for (int f = 0; f < N_FIELDS; f++) {
+      char uri[64];
+      snprintf(uri, sizeof uri, ARP_URI "#%s%d", field_names[f], i + 1);
+      A->param[i][f] = m->map(m->handle, uri);
+      A->stepv[i][f] = field_defaults[f];
+    }
   A->sr = rate; A->bpm = 120.0; A->bpb = 4;
   arp_init(&A->core);
   arp_seed(&A->core, (uint32_t)(uintptr_t)A ^ 0xA5A5A5A5u);
@@ -162,11 +203,6 @@ static void run(LV2_Handle h, uint32_t n) {
                  ctl_int(A, P_ORDER, ARP_UP), ctl_int(A, P_OCTAVES, 1));
   arp_set_latch(&A->core, ctl_int(A, P_LATCH, 0) != 0);
   arp_set_length(&A->core, ctl_int(A, P_LENGTH, ARP_MAX_STEPS));
-  for (int i = 0; i < ARP_MAX_STEPS; i++) {
-    const int p = P_STEP0 + 4 * i;
-    arp_set_step(&A->core, i, ctl_int(A, p, 100), ctl_int(A, p + 1, 0), ctl_int(A, p + 2, 100),
-                 ctl_int(A, p + 3, ARP_GATE_GLOBAL));
-  }
 
   LV2_ATOM_SEQUENCE_FOREACH(A->in, ev) {
     uint32_t f = (uint32_t)ev->time.frames;
@@ -177,6 +213,7 @@ static void run(LV2_Handle h, uint32_t n) {
     else if (ev->body.type == A->atom_Object) {
       const LV2_Atom_Object* o = (const LV2_Atom_Object*)&ev->body;
       if (o->body.otype == A->time_Position) handle_pos(A, o);
+      else if (o->body.otype == A->patch_Set) handle_patch_set(A, o);
     }
   }
   advance_to(A, n);
