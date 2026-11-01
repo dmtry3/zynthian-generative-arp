@@ -16,7 +16,8 @@
 #define ARP_URI "urn:generativearp:arp"
 #define JUMP_TICKS 4.0   /* position difference treated as a relocation */
 
-enum { P_MIDI_IN = 0, P_MIDI_OUT = 1, P_RATE, P_GATE, P_ORDER, P_OCTAVES, P_LATCH, P_END };
+enum { P_MIDI_IN = 0, P_MIDI_OUT = 1, P_RATE, P_GATE, P_ORDER, P_OCTAVES, P_LATCH, P_LENGTH,
+       P_STEP0, P_END = P_STEP0 + 4 * ARP_MAX_STEPS };   /* per step: prob, shift, vel, gate */
 #define N_CTL (P_END - P_RATE)
 
 typedef struct { LV2_Atom_Event ev; uint8_t msg[3]; } MidiOut;
@@ -157,6 +158,12 @@ static void run(LV2_Handle h, uint32_t n) {
   arp_set_params(&A->core, ctl_int(A, P_RATE, ARP_RATE_16), ctl_int(A, P_GATE, 50),
                  ctl_int(A, P_ORDER, ARP_UP), ctl_int(A, P_OCTAVES, 1));
   arp_set_latch(&A->core, ctl_int(A, P_LATCH, 0) != 0);
+  arp_set_length(&A->core, ctl_int(A, P_LENGTH, ARP_MAX_STEPS));
+  for (int i = 0; i < ARP_MAX_STEPS; i++) {
+    const int p = P_STEP0 + 4 * i;
+    arp_set_step(&A->core, i, ctl_int(A, p, 100), ctl_int(A, p + 1, 0), ctl_int(A, p + 2, 100),
+                 ctl_int(A, p + 3, ARP_GATE_GLOBAL));
+  }
 
   LV2_ATOM_SEQUENCE_FOREACH(A->in, ev) {
     uint32_t f = (uint32_t)ev->time.frames;

@@ -423,6 +423,127 @@ static void test_latch(void) {
   { static const int e[] = { 0 }; expect("latch off: releasing keys stops the arp", g, n, e, 0); }
 }
 
+/* ---------- stage 4a: pattern steps ---------- */
+
+static void test_pattern_shift_example(void) {
+  ArpCore a; Log l = {0}; arp_init(&a); chord(&a);
+  arp_set_length(&a, 4);
+  arp_set_step(&a, 2, 100, 12, 100, 0);
+  arp_set_step(&a, 3, 100, -5, 100, 0);
+  arp_process(&a, 0, 240 * 8, collect, &l);
+  static const int exp[] = { 60, 64, 79, 55, 64, 67, 72, 59 };   /* C E G' G- E G C' B- */
+  check_seq("pattern Length 4, shifts 0 0 +12 -5 over C-E-G (example table)", &l, exp, 8);
+}
+
+static void test_prob(void) {
+  int g[512], n;
+  ArpCore a;
+  arp_init(&a); chord(&a);
+  arp_set_length(&a, 2);
+  arp_set_step(&a, 1, 0, 0, 100, 0);           /* every 2nd step silent */
+  n = play(&a, 0, 240 * 6, g);
+  { static const int e[] = { 60, 67, 64 }; expect("prob 0%: step silent, note order still advances", g, n, e, 3); }
+
+  Log l1 = {0}, l2 = {0};
+  for (int k = 0; k < 2; k++) {
+    arp_init(&a); chord(&a); arp_seed(&a, 1234);
+    arp_set_length(&a, 1);
+    arp_set_step(&a, 0, 50, 0, 100, 0);
+    arp_process(&a, 0, 240 * 400, collect, k ? &l2 : &l1);
+  }
+  n = ons(&l1, g);
+  printf("%s: prob 50%%: about half of 400 steps play (%d)\n", n > 160 && n < 240 ? "PASS" : "FAIL", n);
+  printf("%s: prob 50%% is reproducible with the same seed\n", same_logs(&l1, &l2) ? "PASS" : "FAIL");
+  failures += !(n > 160 && n < 240) + !same_logs(&l1, &l2);
+}
+
+static void test_shift_range(void) {
+  int g[64], n;
+  ArpCore a; arp_init(&a);
+  arp_note_on(&a, 0, 120, 100); arp_note_on(&a, 0, 5, 100);
+  arp_set_length(&a, 2);
+  arp_set_step(&a, 0, 100, -24, 100, 0);       /* 5-24 < 0: silent */
+  arp_set_step(&a, 1, 100, 24, 100, 0);        /* 120+24 > 127: silent */
+  n = play(&a, 0, 240 * 4, g);
+  { static const int e[] = { 0 }; expect("shift out of 0..127 makes the step silent", g, n, e, 0); }
+  arp_set_step(&a, 0, 100, -60, 300, 50);       /* clamped to -24, 200 */
+  printf("%s: step values are clamped\n", a.steps[0].shift == -24 && a.steps[0].vel == 200 ? "PASS" : "FAIL");
+  if (!(a.steps[0].shift == -24 && a.steps[0].vel == 200)) failures++;
+}
+
+static void test_step_velocity(void) {
+  ArpCore a; Log l = {0}; arp_init(&a);
+  arp_note_on(&a, 0, 60, 100);
+  arp_set_length(&a, 4);
+  arp_set_step(&a, 0, 100, 0, 50, 0);
+  arp_set_step(&a, 1, 100, 0, 200, 0);         /* 200 -> clamped 127 */
+  arp_set_step(&a, 2, 100, 0, 0, 0);           /* 0 -> 1 (not a note-off) */
+  arp_set_step(&a, 3, 100, 0, 110, 0);
+  arp_process(&a, 0, 240 * 4, collect, &l);
+  int v[4], k = 0;
+  for (int i = 0; i < l.n; i++) if ((l.ev[i].st & 0xF0) == 0x90 && k < 4) v[k++] = l.ev[i].d2;
+  int ok = k == 4 && v[0] == 50 && v[1] == 127 && v[2] == 1 && v[3] == 110;
+  printf("%s: step velocity %% of key velocity, clamped to 1..127\n", ok ? "PASS" : "FAIL");
+  if (!ok) failures++;
+}
+
+static void test_step_gate(void) {
+  ArpCore a; Log l = {0}; arp_init(&a); chord(&a);
+  arp_set_length(&a, 3);
+  arp_set_step(&a, 0, 100, 0, 100, 0);         /* global 50% -> 120 */
+  arp_set_step(&a, 1, 100, 0, 100, 10);        /* 24 */
+  arp_set_step(&a, 2, 100, 0, 100, 100);       /* 240, off before next on */
+  arp_process(&a, 0, 240 * 4, collect, &l);
+  static const double exp[][3] = {
+    {0, 1, 60}, {120, 0, 60}, {240, 1, 64}, {264, 0, 64}, {480, 1, 67}, {720, 0, 67}, {720, 1, 60}, {840, 0, 60},
+  };
+  check("step gate: Global, 10%, 100%", &l, exp, 8);
+}
+
+static void test_tie(void) {
+  ArpCore a; Log l = {0}; arp_init(&a); chord(&a);
+  arp_set_length(&a, 4);
+  arp_set_step(&a, 0, 100, 0, 100, ARP_GATE_TIE);
+  arp_set_step(&a, 1, 100, -4, 100, ARP_GATE_TIE);   /* 64-4 = 60: same pitch as the tied note */
+  arp_set_step(&a, 2, 100, 0, 100, ARP_GATE_TIE);
+  arp_set_step(&a, 3, 0, 0, 100, 0);                 /* silent: the tie ends here */
+  arp_process(&a, 0, 240 * 5, collect, &l);
+  /* step 1: 60 tied; step 2: 60 again -> continues, no events; step 3: legato 67 (on before off);
+   * step 4 silent: tie ends; step 5 = pattern step 1 again: 64 tied (no off inside the range) */
+  static const double exp2[][3] = { {0, 1, 60}, {480, 1, 67}, {480, 0, 60}, {720, 0, 67}, {960, 1, 64} };
+  check("tie: same pitch continues, legato on-before-off, silent step ends it", &l, exp2, 5);
+
+  Log l2 = {0};
+  arp_note_off(&a, 0, 60); arp_note_off(&a, 0, 64); arp_note_off(&a, 0, 67);
+  arp_process(&a, 1200, 1500, collect, &l2);
+  static const double e3[][3] = { {1200, 0, 64} };
+  check("tie: keys released -> tied note ends at the next step", &l2, e3, 1);
+
+  ArpCore b; Log l3 = {0}; arp_init(&b); chord(&b);
+  arp_set_step(&b, 0, 100, 0, 100, ARP_GATE_TIE);
+  arp_process(&b, 0, 100, collect, &l3);
+  arp_silence(&b, 100, collect, &l3);
+  arp_process(&b, 100, 200, collect, &l3);
+  static const double e4[][3] = { {0, 1, 60}, {100, 0, 60} };
+  check("tie: transport jump silences the tied note", &l3, e4, 2);
+}
+
+static void test_pattern_reset_and_length(void) {
+  int g[64], n;
+  ArpCore a; arp_init(&a); chord(&a);
+  arp_set_length(&a, 4);
+  arp_set_step(&a, 0, 100, 12, 100, 0);
+  n = play(&a, 0, 240 * 2, g);                 /* steps 1,2: 72 64 */
+  arp_note_off(&a, 0, 60); arp_note_off(&a, 0, 64); arp_note_off(&a, 0, 67);
+  chord(&a);
+  n = play(&a, 480, 480 + 240 * 2, g);         /* restarts at step 1: 72 64 */
+  { static const int e[] = { 72, 64 }; expect("pattern restarts at step 1 after all keys released", g, n, e, 2); }
+
+  arp_set_length(&a, 1);                       /* only step 1 (+12) now */
+  n = play(&a, 960, 960 + 240 * 3, g);         /* order continues 67 60 64, all +12 */
+  { static const int e[] = { 79, 72, 76 }; expect("Length changed on the fly", g, n, e, 3); }
+}
+
 int main(void) {
   test_up_one_block();
   test_chunks();
@@ -441,6 +562,13 @@ int main(void) {
   test_high_notes();
   test_wide_chord_octaves();
   test_latch();
+  test_pattern_shift_example();
+  test_prob();
+  test_shift_range();
+  test_step_velocity();
+  test_step_gate();
+  test_tie();
+  test_pattern_reset_and_length();
   printf(failures ? "\n%d FAILED\n" : "\nALL PASSED\n", failures);
   return failures ? 1 : 0;
 }
