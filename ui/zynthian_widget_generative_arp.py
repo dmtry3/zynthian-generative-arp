@@ -22,6 +22,9 @@ LANES = [
     ("gate", "Gate", 0, 101, 0),
 ]
 LANE_COLORS = ["#4dabf7", "#ffa94d", "#69db7c", "#9775fa"]
+KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+SCALES = ["Chromatic", "major", "minor", "dorian", "phrygian", "lydian", "mixolydian",
+          "harm. minor", "mel. minor", "major pent.", "minor pent.", "blues"]
 DOUBLE_TAP = 0.35            # seconds: second tap on the same step resets it
 
 
@@ -224,6 +227,14 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
             base = y1
         if key == "vel":
             c.create_line(x0, yv(100), x1, yv(100), fill="#606060", dash=(3, 3), tags="dyn")
+        if key == "shift":                                   # units of Shift: semitones or scale degrees
+            sc = int(round(self._zval("scale", 0)))
+            if 0 < sc < len(SCALES):
+                unit = "%s %s \u00b7 steps" % (KEYS[int(round(self._zval("key", 0))) % 12], SCALES[sc])
+            else:
+                unit = "semitones"
+            c.create_text(x1 - 2, y0 + 1, anchor="ne", text=unit, tags="dyn", fill=tx_off,
+                          font=(fam, max(7, fs_tab - 2)))
 
         # bars
         for i in range(NSTEPS):

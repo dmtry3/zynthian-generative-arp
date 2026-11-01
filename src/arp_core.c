@@ -6,6 +6,24 @@
 
 static const int rate_ticks[ARP_NRATES] = { 960, 480, 320, 240, 160, 120 };
 
+/* bit i = semitone i above the key */
+#define M(a, b, c, d, e, f, g) ((1u << (a)) | (1u << (b)) | (1u << (c)) | (1u << (d)) | (1u << (e)) | (1u << (f)) | (1u << (g)))
+static const uint16_t scale_mask[ARP_NSCALES] = {
+  0xFFF,                          /* Chromatic */
+  M(0, 2, 4, 5, 7, 9, 11),        /* Major */
+  M(0, 2, 3, 5, 7, 8, 10),        /* Minor (natural) */
+  M(0, 2, 3, 5, 7, 9, 10),        /* Dorian */
+  M(0, 1, 3, 5, 7, 8, 10),        /* Phrygian */
+  M(0, 2, 4, 6, 7, 9, 11),        /* Lydian */
+  M(0, 2, 4, 5, 7, 9, 10),        /* Mixolydian */
+  M(0, 2, 3, 5, 7, 8, 11),        /* Harmonic minor */
+  M(0, 2, 3, 5, 7, 9, 11),        /* Melodic minor */
+  M(0, 2, 4, 7, 9, 0, 0),         /* Major pentatonic */
+  M(0, 3, 5, 7, 10, 0, 0),        /* Minor pentatonic */
+  M(0, 3, 5, 6, 7, 10, 0),        /* Blues */
+};
+#undef M
+
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 void arp_init(ArpCore* a) {
@@ -13,7 +31,29 @@ void arp_init(ArpCore* a) {
   a->rng = 0x9E3779B9u;
   arp_set_params(a, ARP_RATE_16, 50, ARP_UP, 1);
   arp_set_length(a, ARP_MAX_STEPS);
+  arp_set_scale(a, 0, ARP_SCALE_CHROMATIC);
   for (int i = 0; i < ARP_MAX_STEPS; i++) arp_set_step(a, i, 100, 0, 100, ARP_GATE_GLOBAL);
+}
+
+void arp_set_scale(ArpCore* a, int key, int scale) {
+  a->key = clampi(key, 0, 11);
+  a->scale = clampi(scale, 0, ARP_NSCALES - 1);
+}
+
+static int in_scale(const ArpCore* a, int p) {
+  return (scale_mask[a->scale] >> (((p - a->key) % 12 + 12) % 12)) & 1;
+}
+
+int arp_shift_note(const ArpCore* a, int note, int n) {
+  if (n == 0) return note;                       /* played note stays as played, even off the scale */
+  if (a->scale == ARP_SCALE_CHROMATIC) return note + n;
+  int p = note;
+  while (!in_scale(a, p)) p--;                   /* off the scale: count from the degree below */
+  const int dir = n > 0 ? 1 : -1;
+  for (int k = 0; k < n * dir; k++) {
+    do { p += dir; } while (!in_scale(a, p));
+  }
+  return p;
 }
 
 void arp_set_lane_length(ArpCore* a, int lane, int length) {
@@ -225,7 +265,7 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   a->step_count = a->count;
 
   int play = prob >= 100 || (prob > 0 && (int)(rnd(a) % 100u) < prob);
-  int pitch = n->note + shift;
+  int pitch = arp_shift_note(a, n->note, shift);
   if (pitch < 0 || pitch > 127) play = 0;
   if (!play) {
     if (a->sounding) note_off_at(a, s, emit, user);

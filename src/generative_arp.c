@@ -21,8 +21,8 @@
 /* Control input ports come first (0..5): Zynthian numbers LV2 parameters from len(control ports)+1,
  * so a control port with a higher index would be overwritten by a parameter in its list. */
 enum { P_RATE = 0, P_GATE, P_ORDER, P_OCTAVES, P_LATCH,
-       P_LEN0, P_END = P_LEN0 + ARP_NLANES,               /* row lengths: prob, shift, vel, gate */
-       P_MIDI_IN = P_END, P_MIDI_OUT, P_STEP_COUNT };     /* step_count: output, for the widget */
+       P_LEN0, P_KEY = P_LEN0 + ARP_NLANES, P_SCALE,     /* row lengths: prob, shift, vel, gate */
+       P_END, P_MIDI_IN = P_END, P_MIDI_OUT, P_STEP_COUNT };   /* step_count: output, for the widget */
 
 /* Pattern step values are LV2 parameters (patch:Set on midi_in), not ports: Zynthian's jalv does not
  * register notOnGUI ports, but it does register parameters. Order of fields per step: */
@@ -206,6 +206,7 @@ static void run(LV2_Handle h, uint32_t n) {
                  ctl_int(A, P_ORDER, ARP_UP), ctl_int(A, P_OCTAVES, 1));
   arp_set_latch(&A->core, ctl_int(A, P_LATCH, 0) != 0);
   for (int r = 0; r < ARP_NLANES; r++) arp_set_lane_length(&A->core, r, ctl_int(A, P_LEN0 + r, ARP_MAX_STEPS));
+  arp_set_scale(&A->core, ctl_int(A, P_KEY, 0), ctl_int(A, P_SCALE, ARP_SCALE_CHROMATIC));
 
   LV2_ATOM_SEQUENCE_FOREACH(A->in, ev) {
     uint32_t f = (uint32_t)ev->time.frames;

@@ -88,6 +88,8 @@ class Processor:
         self.engine = Engine()
         self.id = 1
         self.controllers_dict = {k: Ctrl(k, 16, 1, 16) for k in ("len_prob", "len_shift", "len_vel", "len_gate")}
+        self.controllers_dict["key"] = Ctrl("key", 0, 0, 11)
+        self.controllers_dict["scale"] = Ctrl("scale", 0, 0, 11)
         for i in range(1, 17):
             self.controllers_dict["prob%d" % i] = Ctrl("prob%d" % i, 100, 0, 100)
             self.controllers_dict["shift%d" % i] = Ctrl("shift%d" % i, 0, -24, 24)
@@ -241,6 +243,14 @@ def main():
     check("tabs show every row length", {"Prob 16", "Shift 3", "Vel 5", "Gate 16"} <= set(texts()))
     proc.engine.step_count = 0; wdg.update()
     check("no playhead when idle", playhead_col() == 0)
+
+    # Shift tab shows the units: semitones (Chromatic) or degrees of the chosen scale
+    wdg._on_press(Ev(tab(1), tab_h // 2)); wdg.update()
+    check("Shift tab, Chromatic: 'semitones'", "semitones" in texts())
+    proc.controllers_dict["key"].value = 9; proc.controllers_dict["scale"].value = 2; wdg.update()
+    check("Shift tab, A minor: 'A minor \u00b7 steps'", "A minor \u00b7 steps" in texts())
+    wdg._on_press(Ev(tab(0), tab_h // 2)); wdg.update()
+    check("other tabs don't show the scale", not any("steps" in t or "semitones" in t for t in texts()))
 
     # drawing does not crash with the playing step and resizes
     for cs in (0, 1, 16, 1000):

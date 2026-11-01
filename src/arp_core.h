@@ -14,6 +14,11 @@
 /* Rows (lanes) of the pattern; each has its own length (polyrhythm). */
 enum { ARP_LANE_PROB, ARP_LANE_SHIFT, ARP_LANE_VEL, ARP_LANE_GATE, ARP_NLANES };
 
+/* Scales for Shift: Chromatic = semitones, otherwise Shift counts scale degrees. */
+enum { ARP_SCALE_CHROMATIC, ARP_SCALE_MAJOR, ARP_SCALE_MINOR, ARP_SCALE_DORIAN, ARP_SCALE_PHRYGIAN,
+       ARP_SCALE_LYDIAN, ARP_SCALE_MIXOLYDIAN, ARP_SCALE_HARM_MINOR, ARP_SCALE_MEL_MINOR,
+       ARP_SCALE_MAJ_PENT, ARP_SCALE_MIN_PENT, ARP_SCALE_BLUES, ARP_NSCALES };
+
 enum { ARP_RATE_4, ARP_RATE_8, ARP_RATE_8T, ARP_RATE_16, ARP_RATE_16T, ARP_RATE_32, ARP_NRATES };
 enum { ARP_UP, ARP_DOWN, ARP_UPDOWN, ARP_DOWNUP, ARP_PLAYED, ARP_RANDOM, ARP_NORDERS };
 
@@ -43,6 +48,7 @@ typedef struct {
   int step_ticks, gate_ticks;
   ArpStep steps[ARP_MAX_STEPS];
   int lane_len[ARP_NLANES];     /* length of each row 1..16 */
+  int key, scale;               /* key 0..11 (C..B), scale ARP_SCALE_* */
 
   /* note order state; reset when all keys are released */
   int has_last;                 /* last played pitch valid */
@@ -67,6 +73,10 @@ void arp_seed(ArpCore* a, uint32_t seed);
 void arp_set_lane_length(ArpCore* a, int lane, int length);
 void arp_set_length(ArpCore* a, int length);
 void arp_set_step(ArpCore* a, int i, int prob, int shift, int vel, int gate);
+/* Key 0..11 (C..B) and scale for Shift. */
+void arp_set_scale(ArpCore* a, int key, int scale);
+/* note moved by n semitones (Chromatic) or n scale degrees; may return a value outside 0..127. */
+int  arp_shift_note(const ArpCore* a, int note, int n);
 /* Latch on: the chord stays after the keys are released; the next chord (pressed after all keys
  * were released) replaces it. Latch off: only the keys still down are kept. */
 void arp_set_latch(ArpCore* a, int on);
