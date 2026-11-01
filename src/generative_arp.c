@@ -18,8 +18,10 @@
 #define ARP_URI "urn:generativearp:arp"
 #define JUMP_TICKS 4.0   /* position difference treated as a relocation */
 
-enum { P_MIDI_IN = 0, P_MIDI_OUT = 1, P_RATE, P_GATE, P_ORDER, P_OCTAVES, P_LATCH, P_LENGTH, P_END,
-       P_CUR_STEP = P_END };                              /* output: playing step for the widget */
+/* Control input ports come first (0..5): Zynthian numbers LV2 parameters from len(control ports)+1,
+ * so a control port with a higher index would be overwritten by a parameter in its list. */
+enum { P_RATE = 0, P_GATE, P_ORDER, P_OCTAVES, P_LATCH, P_LENGTH, P_END,
+       P_MIDI_IN = P_END, P_MIDI_OUT, P_CUR_STEP };       /* cur_step: output, playing step for the widget */
 
 /* Pattern step values are LV2 parameters (patch:Set on midi_in), not ports: Zynthian's jalv does not
  * register notOnGUI ports, but it does register parameters. Order of fields per step: */
@@ -181,7 +183,7 @@ static void connect_port(LV2_Handle h, uint32_t port, void* data) {
   Arp* A = (Arp*)h;
   if (port == P_MIDI_IN) A->in = (const LV2_Atom_Sequence*)data;
   else if (port == P_MIDI_OUT) A->out = (LV2_Atom_Sequence*)data;
-  else if (port >= P_RATE && port < P_END) A->ctl[port - P_RATE] = (const float*)data;
+  else if (port < P_END) A->ctl[port - P_RATE] = (const float*)data;
   else if (port == P_CUR_STEP) A->cur_step_out = (float*)data;
 }
 

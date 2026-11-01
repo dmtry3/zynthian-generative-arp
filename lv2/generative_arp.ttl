@@ -16,7 +16,7 @@
 <urn:generativearp:arp>
     a lv2:Plugin , lv2:UtilityPlugin ;
     doap:name "Generative Arp" ;
-    lv2:minorVersion 7 ;
+    lv2:minorVersion 8 ;
     lv2:microVersion 0 ;
     lv2:requiredFeature urid:map ;
     patch:writable
@@ -36,21 +36,23 @@
         <urn:generativearp:arp#prob14> , <urn:generativearp:arp#shift14> , <urn:generativearp:arp#vel14> , <urn:generativearp:arp#gate14> ,
         <urn:generativearp:arp#prob15> , <urn:generativearp:arp#shift15> , <urn:generativearp:arp#vel15> , <urn:generativearp:arp#gate15> ,
         <urn:generativearp:arp#prob16> , <urn:generativearp:arp#shift16> , <urn:generativearp:arp#vel16> , <urn:generativearp:arp#gate16> ;
+    # Control input ports MUST be indices 0..N-1 (before atom ports): Zynthian numbers LV2 parameters
+    # from len(control ports)+1 and would overwrite a control port with a higher index.
     lv2:port
     [
         a lv2:InputPort , atom:AtomPort ;
         atom:bufferType atom:Sequence ;
         atom:supports midi:MidiEvent , time:Position , patch:Message ;
         lv2:designation lv2:control ;
-        lv2:index 0 ; lv2:symbol "midi_in" ; lv2:name "MIDI In" ;
+        lv2:index 6 ; lv2:symbol "midi_in" ; lv2:name "MIDI In" ;
     ] , [
         a lv2:OutputPort , atom:AtomPort ;
         atom:bufferType atom:Sequence ;
         atom:supports midi:MidiEvent , patch:Message ;
-        lv2:index 1 ; lv2:symbol "midi_out" ; lv2:name "MIDI Out" ;
+        lv2:index 7 ; lv2:symbol "midi_out" ; lv2:name "MIDI Out" ;
     ] , [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 2 ; lv2:symbol "rate" ; lv2:name "Rate" ;
+        lv2:index 0 ; lv2:symbol "rate" ; lv2:name "Rate" ;
         lv2:default 3 ; lv2:minimum 0 ; lv2:maximum 5 ;
         lv2:portProperty lv2:integer , lv2:enumeration ;
         lv2:scalePoint [ rdfs:label "1/4" ; rdf:value 0 ] , [ rdfs:label "1/8" ; rdf:value 1 ] ,
@@ -59,12 +61,12 @@
         lv2:displayPriority 40 ; pg:group <urn:generativearp:arp#g_arp> ;
     ] , [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 3 ; lv2:symbol "gate" ; lv2:name "Gate %" ;
+        lv2:index 1 ; lv2:symbol "gate" ; lv2:name "Gate %" ;
         lv2:default 50 ; lv2:minimum 5 ; lv2:maximum 100 ; lv2:portProperty lv2:integer ;
         lv2:displayPriority 30 ; pg:group <urn:generativearp:arp#g_arp> ;
     ] , [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 4 ; lv2:symbol "order" ; lv2:name "Order" ;
+        lv2:index 2 ; lv2:symbol "order" ; lv2:name "Order" ;
         lv2:default 0 ; lv2:minimum 0 ; lv2:maximum 5 ;
         lv2:portProperty lv2:integer , lv2:enumeration ;
         lv2:scalePoint [ rdfs:label "Up" ; rdf:value 0 ] , [ rdfs:label "Down" ; rdf:value 1 ] ,
@@ -73,17 +75,17 @@
         lv2:displayPriority 20 ; pg:group <urn:generativearp:arp#g_arp> ;
     ] , [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 5 ; lv2:symbol "octaves" ; lv2:name "Octaves" ;
+        lv2:index 3 ; lv2:symbol "octaves" ; lv2:name "Octaves" ;
         lv2:default 1 ; lv2:minimum 1 ; lv2:maximum 4 ; lv2:portProperty lv2:integer ;
         lv2:displayPriority 10 ; pg:group <urn:generativearp:arp#g_arp> ;
     ] , [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 6 ; lv2:symbol "latch" ; lv2:name "Latch" ;
+        lv2:index 4 ; lv2:symbol "latch" ; lv2:name "Latch" ;
         lv2:default 0 ; lv2:minimum 0 ; lv2:maximum 1 ; lv2:portProperty lv2:toggled ;
         lv2:displayPriority 40 ; pg:group <urn:generativearp:arp#g_pattern> ;
     ] , [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 7 ; lv2:symbol "length" ; lv2:name "Length" ;
+        lv2:index 5 ; lv2:symbol "length" ; lv2:name "Length" ;
         lv2:default 16 ; lv2:minimum 1 ; lv2:maximum 16 ; lv2:portProperty lv2:integer ;
         lv2:displayPriority 30 ; pg:group <urn:generativearp:arp#g_pattern> ;
     ] , [
