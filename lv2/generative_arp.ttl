@@ -9,6 +9,7 @@
 @prefix pg:   <http://lv2plug.in/ns/ext/port-groups#> .
 @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix state: <http://lv2plug.in/ns/ext/state#> .
 
 <urn:generativearp:arp#g_arp> a pg:Group ; lv2:symbol "g_arp" ; lv2:name "Arp" ; lv2:index 0 ; lv2:displayPriority 60 .
 <urn:generativearp:arp#g_pattern> a pg:Group ; lv2:symbol "g_pattern" ; lv2:name "Pattern" ; lv2:index 1 ; lv2:displayPriority 50 .
@@ -19,9 +20,10 @@
 <urn:generativearp:arp>
     a lv2:Plugin , lv2:UtilityPlugin ;
     doap:name "Generative Arp" ;
-    lv2:minorVersion 13 ;
+    lv2:minorVersion 14 ;
     lv2:microVersion 0 ;
     lv2:requiredFeature urid:map ;
+    lv2:extensionData state:interface ;   # pattern steps go into presets
     patch:writable
         <urn:generativearp:arp#prob1> , <urn:generativearp:arp#shift1> , <urn:generativearp:arp#vel1> , <urn:generativearp:arp#gate1> ,
         <urn:generativearp:arp#prob2> , <urn:generativearp:arp#shift2> , <urn:generativearp:arp#vel2> , <urn:generativearp:arp#gate2> ,

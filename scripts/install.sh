@@ -7,4 +7,12 @@ UI_DIR="${ZYNTHIAN_UI_DIR:-/zynthian/zynthian-ui}"
 mkdir -p "$LV2_DIR" "$UI_DIR/zyngui/widgets_user"
 ln -sfn "$ROOT/build/generative_arp.lv2" "$LV2_DIR/generative_arp.lv2"
 ln -sfn "$ROOT/ui/zynthian_widget_generative_arp.py" "$UI_DIR/zyngui/widgets_user/zynthian_widget_generative_arp.py"
+# Zynthian keeps a cache of each plugin's preset list: rebuild it for this plugin only, with Zynthian's own tool.
+ENVARS="${ZYNTHIAN_ENVARS:-/zynthian/config/zynthian_envars.sh}"
+if [ -f "$UI_DIR/zyngine/zynthian_lv2.py" ] && [ -f "$ENVARS" ]; then
+    ( set +e; source "$ENVARS"; cd "$UI_DIR" && python3 zyngine/zynthian_lv2.py presets urn:generativearp:arp ) \
+        && echo "Preset list updated." || echo "Warning: preset list not updated (run install.sh again on Zynthian)."
+else
+    echo "Note: $ENVARS or zynthian_lv2.py not found, preset list cache not updated."
+fi
 echo "Installed. Restart Zynthian: systemctl restart zynthian"

@@ -45,6 +45,11 @@
   ```
   Каталог можно переопределить: `LV2_DIR=... ./scripts/install.sh`.
   После пересборки (`./scripts/build.sh`) достаточно перезапустить zynthian: ссылка уже указывает на `build/`.
+- Пресеты: стандартные LV2 (список и «Save preset» в Zynthian). Плагин хранит шаги паттерна через LV2 State
+  и после загрузки отвечает на `patch:Get` значениями шагов, чтобы Zynthian и виджет их увидели.
+  Заводские пресеты генерирует `scripts/gen_presets.py` → `lv2/presets.ttl` и `lv2/manifest.ttl` (руками не править).
+  После изменения пресетов или первой установки нужен `sudo ./scripts/install.sh`: он обновляет кэш списка
+  пресетов Zynthian для этого плагина (штатная `zynthian_lv2.py presets <URI>`).
 - Проверка: `lv2ls | grep generativearp`, `lv2info urn:generativearp:arp`.
 - В Zynthian: добавить в цепочку как MIDI tool перед синтом.
 - Удаление: `sudo ./scripts/uninstall.sh` (удаляет только ссылки).

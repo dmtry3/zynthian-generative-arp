@@ -3,9 +3,11 @@
  * Transport stopped: ticks come from an internal clock at the host tempo. */
 #include <lv2/core/lv2.h>
 #include <lv2/atom/atom.h>
+#include <lv2/atom/forge.h>
 #include <lv2/atom/util.h>
 #include <lv2/midi/midi.h>
 #include <lv2/patch/patch.h>
+#include <lv2/state/state.h>
 #include <lv2/time/time.h>
 #include <lv2/urid/urid.h>
 #include <math.h>
@@ -18,6 +20,7 @@
 
 #define ARP_URI "urn:generativearp:arp"
 #define JUMP_TICKS 4.0   /* position difference treated as a relocation */
+#define REPORT_PER_RUN 16 /* patch:Set replies per run() after patch:Get, not to overflow midi_out */
 
 /* Control input ports come first (0..P_END-1): Zynthian numbers LV2 parameters from len(control ports)+1,
  * so a control port with a higher index would be overwritten by a parameter in its list. */
@@ -47,7 +50,9 @@ typedef struct {
   LV2_URID map_urid_type;
   LV2_URID midi_Event, atom_Object, atom_Float, atom_Double, atom_Long, atom_Int;
   LV2_URID time_Position, time_bar, time_barBeat, time_bpm, time_speed, time_bpb;
-  LV2_URID patch_Set, patch_property, patch_value;
+  LV2_URID patch_Set, patch_Get, patch_property, patch_value;
+  LV2_Atom_Forge forge;
+  int report_next;       /* next parameter to report after patch:Get, -1 = nothing to report */
   LV2_URID param[ARP_MAX_STEPS][N_FIELDS];
   int stepv[ARP_MAX_STEPS][N_FIELDS];
 
@@ -171,6 +176,7 @@ static LV2_Handle instantiate(const LV2_Descriptor* d, double rate, const char* 
   A->time_bpb      = m->map(m->handle, LV2_TIME__beatsPerBar);
   A->map_urid_type = m->map(m->handle, LV2_ATOM__URID);
   A->patch_Set      = m->map(m->handle, LV2_PATCH__Set);
+  A->patch_Get      = m->map(m->handle, LV2_PATCH__Get);
   A->patch_property = m->map(m->handle, LV2_PATCH__property);
   A->patch_value    = m->map(m->handle, LV2_PATCH__value);
   for (int i = 0; i < ARP_MAX_STEPS; i++)
@@ -186,6 +192,8 @@ static LV2_Handle instantiate(const LV2_Descriptor* d, double rate, const char* 
   arp_seed_mutation(&A->core, (uint32_t)time(NULL) ^ ((uint32_t)(uintptr_t)A * 2654435761u));
   arp_reset_mutation(&A->core);   /* a different loop after every start */
   A->reset_prev = -1;
+  A->report_next = -1;
+  lv2_atom_forge_init(&A->forge, m);
   return A;
 }
 
@@ -205,6 +213,26 @@ static int ctl_int(const Arp* A, int port, int def) {
 
 static void activate(LV2_Handle h) { (void)h; }
 static void deactivate(LV2_Handle h) { (void)h; }
+
+/* After patch:Get: tell the host the step values as patch:Set on midi_out, a few per run.
+ * jalv prints them, so Zynthian's controllers (and the widget) follow a loaded preset. */
+static void report_params(Arp* A, uint32_t n) {
+  for (int k = 0; k < REPORT_PER_RUN && A->report_next >= 0; k++) {
+    const int i = A->report_next / N_FIELDS, f = A->report_next % N_FIELDS;
+    union { LV2_Atom_Event ev; uint8_t raw[128]; } buf;
+    buf.ev.time.frames = n ? n - 1 : 0;
+    lv2_atom_forge_set_buffer(&A->forge, (uint8_t*)&buf.ev.body, sizeof buf - sizeof buf.ev.time);
+    LV2_Atom_Forge_Frame fr;
+    lv2_atom_forge_object(&A->forge, &fr, 0, A->patch_Set);
+    lv2_atom_forge_key(&A->forge, A->patch_property);
+    lv2_atom_forge_urid(&A->forge, A->param[i][f]);
+    lv2_atom_forge_key(&A->forge, A->patch_value);
+    lv2_atom_forge_float(&A->forge, (float)A->stepv[i][f]);
+    lv2_atom_forge_pop(&A->forge, &fr);
+    if (!lv2_atom_sequence_append_event(A->out, A->out_cap, &buf.ev)) return;   /* full: next run */
+    if (++A->report_next >= ARP_MAX_STEPS * N_FIELDS) A->report_next = -1;
+  }
+}
 
 /* All four drifts of a step in one number: (prob+3) + 7*(shift+3) + 49*(vel+3) + 343*(gate+4). */
 static float pack_dev(const int8_t* d) {
@@ -239,16 +267,56 @@ static void run(LV2_Handle h, uint32_t n) {
       const LV2_Atom_Object* o = (const LV2_Atom_Object*)&ev->body;
       if (o->body.otype == A->time_Position) handle_pos(A, o);
       else if (o->body.otype == A->patch_Set) handle_patch_set(A, o);
+      else if (o->body.otype == A->patch_Get) A->report_next = 0;   /* host asks for all parameters */
     }
   }
   advance_to(A, n);
+  report_params(A, n);
   if (A->step_count_out) *A->step_count_out = (float)(A->core.step_count & 0xFFFFFFu);
   for (int i = 0; i < ARP_MAX_STEPS; i++)
     if (A->dev_out[i]) *A->dev_out[i] = pack_dev(A->core.dev[i]);
 }
 
 static void cleanup(LV2_Handle h) { free(h); }
-static const void* extension_data(const char* uri) { (void)uri; return NULL; }
+/* LV2 State: the pattern steps (LV2 parameters) go into presets; control ports are saved by the host. */
+static LV2_State_Status save(LV2_Handle h, LV2_State_Store_Function store, LV2_State_Handle sh,
+                             uint32_t flags, const LV2_Feature* const* features) {
+  (void)flags; (void)features;
+  Arp* A = (Arp*)h;
+  for (int i = 0; i < ARP_MAX_STEPS; i++)
+    for (int f = 0; f < N_FIELDS; f++) {
+      const int32_t v = A->stepv[i][f];
+      store(sh, A->param[i][f], &v, sizeof v, A->atom_Int, LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+    }
+  return LV2_STATE_SUCCESS;
+}
+
+static LV2_State_Status restore(LV2_Handle h, LV2_State_Retrieve_Function retrieve, LV2_State_Handle sh,
+                                uint32_t flags, const LV2_Feature* const* features) {
+  (void)flags; (void)features;
+  Arp* A = (Arp*)h;
+  for (int i = 0; i < ARP_MAX_STEPS; i++) {
+    for (int f = 0; f < N_FIELDS; f++) {
+      size_t size = 0; uint32_t type = 0, vflags = 0;
+      const void* v = retrieve(sh, A->param[i][f], &size, &type, &vflags);
+      int val = field_defaults[f];                       /* missing in the preset: default */
+      if (v && type == A->atom_Int && size >= sizeof(int32_t)) val = *(const int32_t*)v;
+      else if (v && type == A->atom_Float && size >= sizeof(float)) val = (int)lrintf(*(const float*)v);
+      else if (v && type == A->atom_Long && size >= sizeof(int64_t)) val = (int)*(const int64_t*)v;
+      else if (v && type == A->atom_Double && size >= sizeof(double)) val = (int)lrint(*(const double*)v);
+      A->stepv[i][f] = val;
+      arp_clear_mutation(&A->core, i, f);                /* a loaded pattern starts without drift */
+    }
+    apply_step(A, i);
+  }
+  A->report_next = 0;                                    /* tell the host the new values */
+  return LV2_STATE_SUCCESS;
+}
+
+static const void* extension_data(const char* uri) {
+  static const LV2_State_Interface state = { save, restore };
+  return strcmp(uri, LV2_STATE__interface) ? NULL : &state;
+}
 
 static const LV2_Descriptor desc = { ARP_URI, instantiate, connect_port, activate,
                                      run, deactivate, cleanup, extension_data };
