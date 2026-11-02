@@ -53,6 +53,7 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
         self.lane = 0
         self.drag = None             # (lane, last column, last y) while a finger is on the grid
         self.last_tap = (-1, -1, 0.0)  # (lane, column, time) for double tap
+        self.last_scale = None       # scale seen on the previous redraw (None until the first one)
         self.geo = None
         self.widget_canvas = tkinter.Canvas(
             self, highlightthickness=0, relief='flat',
@@ -132,6 +133,28 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
         allowed = [x for x in range(-24, 25) if x % 12 in steps]
         return min(allowed, key=lambda x: (abs(x - v), abs(x)))
 
+    def _remap_shift(self, v, old, new):
+        """Shift value after the scale changed from old to new: between 7-note scales the degree
+        and octave are kept (minor +3 -> major +4), otherwise the nearest allowed semitone."""
+        so, sn = SCALE_STEPS[old], SCALE_STEPS[new]
+        if new == 0:
+            return v
+        if len(so) == 7 and len(sn) == 7 and v % 12 in so:
+            r = (v // 12) * 12 + sn[so.index(v % 12)]
+            if -24 <= r <= 24:
+                return r
+        return self._snap_shift(v)
+
+    def _follow_scale(self):
+        """When the scale changes, move every Shift step into it (the values are saved in the snapshot).
+        Not on the first redraw: a loading snapshot already holds values that fit its scale."""
+        sc = self._scale()
+        if self.last_scale is not None and sc != self.last_scale:
+            for i in range(NSTEPS):
+                v = self._step_val(1, i)
+                self._zset("shift%d" % (i + 1), self._remap_shift(v, self.last_scale, sc))
+        self.last_scale = sc
+
     def _col_at(self, x):
         w, h, pad, tab_h, num_h, x0, x1, y0, y1, cw = self.geo
         return min(max(int((x - x0) / cw), 0), NSTEPS - 1)
@@ -202,6 +225,7 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
     def _draw(self):
         if not self.processor:
             return
+        self._follow_scale()
         c = self.widget_canvas
         c.delete("dyn")
         w, h, pad, tab_h, num_h, x0, x1, y0, y1, cw = self._layout()

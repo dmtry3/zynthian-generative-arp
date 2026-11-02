@@ -266,6 +266,43 @@ def main():
     wdg._on_press(Ev(tab(0), tab_h // 2)); wdg.update()
     check("other tabs don't show the scale", not any("semitones" in t for t in texts()))
 
+    # changing the scale moves Shift steps into the new scale
+    def set_shifts(vals):
+        for i, v in enumerate(vals):
+            proc.controllers_dict["shift%d" % (i + 1)].value = v
+    def shifts(n):
+        return [proc.v("shift%d" % (i + 1)) for i in range(n)]
+    def to_scale(sc):
+        proc.controllers_dict["scale"].value = sc; wdg.update()
+    to_scale(2); set_shifts([3, 8, -2, 12, 24, -24, 0, 10, 5, -9])
+    to_scale(1)   # minor -> major: degree kept
+    got = shifts(10)
+    check("minor -> major keeps degrees (%s)" % got, got == [4, 9, -1, 12, 24, -24, 0, 11, 5, -8])
+    to_scale(2)   # back: major -> minor
+    got = shifts(10)
+    check("major -> minor keeps degrees (%s)" % got, got == [3, 8, -2, 12, 24, -24, 0, 10, 5, -9])
+    to_scale(3)   # minor -> dorian: only b6 changes
+    got = shifts(10)
+    check("minor -> dorian (%s)" % got, got == [3, 9, -2, 12, 24, -24, 0, 10, 5, -9])
+    to_scale(9)   # dorian -> major pent.: nearest
+    got = shifts(10)
+    check("-> major pent. snaps to 0 2 4 7 9 (%s)" % got,
+          all(v % 12 in (0, 2, 4, 7, 9) for v in got) and got[:4] == [2, 9, -3, 12])
+    to_scale(0)
+    set_shifts([1, 6, -1, 11]); before = shifts(10)
+    to_scale(0); check("Chromatic -> Chromatic: unchanged", shifts(10) == before)
+    to_scale(2)
+    got = shifts(4)
+    check("Chromatic -> minor: nearest (%s)" % got, got == [0, 5, 0, 10])
+    to_scale(0); set_shifts([1, 6])
+    check("-> Chromatic: unchanged", shifts(2) == [1, 6])
+    # a new widget (e.g. after a snapshot load) doesn't rewrite on its first redraw
+    proc.controllers_dict["scale"].value = 2
+    w2 = mod.zynthian_widget_generative_arp(Control(root)); w2.set_processor(proc)
+    w2.width, w2.height = wdg.width, wdg.height; w2.update()
+    check("first redraw of a new widget doesn't touch Shift", shifts(2) == [1, 6])
+    w2.destroy(); wdg.last_scale = 2
+
     # drawing does not crash with the playing step and resizes
     for cs in (0, 1, 16, 1000):
         proc.engine.step_count = cs
