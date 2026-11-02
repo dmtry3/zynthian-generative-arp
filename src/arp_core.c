@@ -59,6 +59,8 @@ int arp_shift_note(const ArpCore* a, int note, int n) {
   return p;
 }
 
+void arp_set_transpose(ArpCore* a, int octaves) { a->transpose = clampi(octaves, -2, 2); }
+
 void arp_set_lane_length(ArpCore* a, int lane, int length) {
   if (lane >= 0 && lane < ARP_NLANES) a->lane_len[lane] = clampi(length, 1, ARP_MAX_STEPS);
 }
@@ -359,6 +361,7 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   int play = prob >= 100 || (prob > 0 && (int)(rnd(a) % 100u) < prob);
   int pitch = arp_shift_note(a, n->note, ss->shift);
   if (sdev) pitch = drift_pitch(a, pitch, sdev);
+  pitch += 12 * a->transpose;
   if (pitch < 0 || pitch > 127) play = 0;
   if (!play) {
     if (a->sounding) note_off_at(a, s, emit, user);

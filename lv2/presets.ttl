@@ -24,7 +24,8 @@
         [ lv2:symbol "mut_notes" ; pset:value 0.0 ] ,
         [ lv2:symbol "loop_len" ; pset:value 8.0 ] ,
         [ lv2:symbol "mut_steps" ; pset:value 0.0 ] ,
-        [ lv2:symbol "reset" ; pset:value 0.0 ] ;
+        [ lv2:symbol "reset" ; pset:value 0.0 ] ,
+        [ lv2:symbol "transpose" ; pset:value 0.0 ] ;
     state:state [
         <urn:generativearp:arp#prob1> 100 ; <urn:generativearp:arp#shift1> 0 ; <urn:generativearp:arp#vel1> 100 ; <urn:generativearp:arp#gate1> 0 ;
         <urn:generativearp:arp#prob2> 100 ; <urn:generativearp:arp#shift2> 0 ; <urn:generativearp:arp#vel2> 100 ; <urn:generativearp:arp#gate2> 0 ;
@@ -64,7 +65,8 @@
         [ lv2:symbol "mut_notes" ; pset:value 0.0 ] ,
         [ lv2:symbol "loop_len" ; pset:value 8.0 ] ,
         [ lv2:symbol "mut_steps" ; pset:value 0.0 ] ,
-        [ lv2:symbol "reset" ; pset:value 0.0 ] ;
+        [ lv2:symbol "reset" ; pset:value 0.0 ] ,
+        [ lv2:symbol "transpose" ; pset:value 0.0 ] ;
     state:state [
         <urn:generativearp:arp#prob1> 100 ; <urn:generativearp:arp#shift1> 0 ; <urn:generativearp:arp#vel1> 130 ; <urn:generativearp:arp#gate1> 60 ;
         <urn:generativearp:arp#prob2> 100 ; <urn:generativearp:arp#shift2> 0 ; <urn:generativearp:arp#vel2> 70 ; <urn:generativearp:arp#gate2> 25 ;
@@ -104,7 +106,8 @@
         [ lv2:symbol "mut_notes" ; pset:value 0.0 ] ,
         [ lv2:symbol "loop_len" ; pset:value 8.0 ] ,
         [ lv2:symbol "mut_steps" ; pset:value 0.0 ] ,
-        [ lv2:symbol "reset" ; pset:value 0.0 ] ;
+        [ lv2:symbol "reset" ; pset:value 0.0 ] ,
+        [ lv2:symbol "transpose" ; pset:value 0.0 ] ;
     state:state [
         <urn:generativearp:arp#prob1> 100 ; <urn:generativearp:arp#shift1> 0 ; <urn:generativearp:arp#vel1> 130 ; <urn:generativearp:arp#gate1> 70 ;
         <urn:generativearp:arp#prob2> 100 ; <urn:generativearp:arp#shift2> 12 ; <urn:generativearp:arp#vel2> 80 ; <urn:generativearp:arp#gate2> 20 ;
@@ -144,7 +147,8 @@
         [ lv2:symbol "mut_notes" ; pset:value 10.0 ] ,
         [ lv2:symbol "loop_len" ; pset:value 8.0 ] ,
         [ lv2:symbol "mut_steps" ; pset:value 0.0 ] ,
-        [ lv2:symbol "reset" ; pset:value 0.0 ] ;
+        [ lv2:symbol "reset" ; pset:value 0.0 ] ,
+        [ lv2:symbol "transpose" ; pset:value 0.0 ] ;
     state:state [
         <urn:generativearp:arp#prob1> 100 ; <urn:generativearp:arp#shift1> 0 ; <urn:generativearp:arp#vel1> 120 ; <urn:generativearp:arp#gate1> 0 ;
         <urn:generativearp:arp#prob2> 100 ; <urn:generativearp:arp#shift2> 0 ; <urn:generativearp:arp#vel2> 80 ; <urn:generativearp:arp#gate2> 0 ;
@@ -184,7 +188,8 @@
         [ lv2:symbol "mut_notes" ; pset:value 0.0 ] ,
         [ lv2:symbol "loop_len" ; pset:value 8.0 ] ,
         [ lv2:symbol "mut_steps" ; pset:value 25.0 ] ,
-        [ lv2:symbol "reset" ; pset:value 0.0 ] ;
+        [ lv2:symbol "reset" ; pset:value 0.0 ] ,
+        [ lv2:symbol "transpose" ; pset:value 0.0 ] ;
     state:state [
         <urn:generativearp:arp#prob1> 100 ; <urn:generativearp:arp#shift1> 0 ; <urn:generativearp:arp#vel1> 110 ; <urn:generativearp:arp#gate1> 0 ;
         <urn:generativearp:arp#prob2> 100 ; <urn:generativearp:arp#shift2> 0 ; <urn:generativearp:arp#vel2> 70 ; <urn:generativearp:arp#gate2> 0 ;

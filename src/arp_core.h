@@ -56,6 +56,7 @@ typedef struct {
   ArpStep steps[ARP_MAX_STEPS];
   int lane_len[ARP_NLANES];     /* length of each row 1..16 */
   int key, scale;               /* key 0..11 (C..B), scale ARP_SCALE_* */
+  int transpose;                /* -2..+2 octaves, added to every generated note */
 
   /* note order state; reset when all keys are released */
   int has_last;                 /* last played pitch valid */
@@ -102,6 +103,8 @@ void arp_clear_mutation(ArpCore* a, int i, int lane);
 int  arp_drifted(const ArpCore* a, int lane, int v, int d);
 /* One notch of drift for row lane of step i (what Steps % does when the step plays). */
 void arp_mutate_step(ArpCore* a, int i, int lane);
+/* Transpose all generated notes by -2..+2 octaves (takes effect on the next step). */
+void arp_set_transpose(ArpCore* a, int octaves);
 /* Key 0..11 (C..B) and scale for Shift. */
 void arp_set_scale(ArpCore* a, int key, int scale);
 /* note + n semitones, pulled into the scale (n != 0); may return a value outside 0..127. */

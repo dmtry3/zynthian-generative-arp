@@ -894,6 +894,50 @@ static void test_mutation_details(void) {
   failures += !(nb == nc && !memcmp(gb, gc, sizeof(int) * nb));
 }
 
+/* ---------- transpose ---------- */
+
+static void test_transpose(void) {
+  ArpCore a; int g[64], n;
+  arp_init(&a); chord(&a);
+  arp_set_transpose(&a, 1);
+  n = play(&a, 0, 240 * 3, g);
+  static const int e1[] = { 72, 76, 79 };
+  expect("transpose +1 octave", g, n, e1, 3);
+  arp_set_transpose(&a, -2);
+  n = play(&a, 240 * 3, 240 * 6, g);
+  static const int e2[] = { 36, 40, 43 };
+  expect("transpose -2 octaves, from the next step, order continues", g, n, e2, 3);
+  arp_set_transpose(&a, 9);
+  printf("%s: transpose is clamped to +-2\n", a.transpose == 2 ? "PASS" : "FAIL");
+  failures += a.transpose != 2;
+
+  /* after shift and scale: A minor, shift +3 from A -> C, +1 octave -> C5 */
+  arp_init(&a); arp_note_on(&a, 0, 57, 100);
+  arp_set_length(&a, 1); arp_set_scale(&a, 9, ARP_SCALE_MINOR);
+  arp_set_step(&a, 0, 100, 3, 100, ARP_GATE_GLOBAL);
+  arp_set_transpose(&a, 1);
+  n = play(&a, 0, 240, g);
+  static const int e3[] = { 72 };
+  expect("transpose applies after shift and scale", g, n, e3, 1);
+
+  /* out of range: silent */
+  arp_init(&a); arp_note_on(&a, 0, 110, 100); arp_note_on(&a, 0, 10, 100);
+  arp_set_transpose(&a, 2);
+  n = play(&a, 0, 240 * 2, g);
+  static const int e4[] = { 34 };   /* 10+24; 110+24 > 127 is silent */
+  expect("notes transposed above 127 are silent", g, n, e4, 1);
+
+  /* tie: the same transposed pitch continues */
+  arp_init(&a); arp_note_on(&a, 0, 60, 100);
+  arp_set_length(&a, 2);
+  arp_set_step(&a, 0, 100, 0, 100, ARP_GATE_TIE);
+  arp_set_transpose(&a, -1);
+  Log l = {0};
+  arp_process(&a, 0, 240 * 2, collect, &l);
+  static const double e5[][3] = { {0, 1, 48}, {360, 0, 48} };
+  check("tie on a transposed note continues it", &l, e5, 2);
+}
+
 int main(void) {
   test_up_one_block();
   test_chunks();
@@ -929,6 +973,7 @@ int main(void) {
   test_loop_mutation();
   test_step_mutation();
   test_mutation_details();
+  test_transpose();
   printf(failures ? "\n%d FAILED\n" : "\nALL PASSED\n", failures);
   return failures ? 1 : 0;
 }
