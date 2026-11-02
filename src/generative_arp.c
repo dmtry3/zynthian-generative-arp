@@ -24,7 +24,8 @@
 enum { P_RATE = 0, P_GATE, P_ORDER, P_OCTAVES, P_LATCH,
        P_LEN0, P_KEY = P_LEN0 + ARP_NLANES, P_SCALE,     /* row lengths: prob, shift, vel, gate */
        P_MUT_NOTES, P_LOOP_LEN, P_MUT_STEPS, P_RESET,     /* mutation; any change of reset = reset */
-       P_END, P_MIDI_IN = P_END, P_MIDI_OUT, P_STEP_COUNT };   /* step_count: output, for the widget */
+       P_END, P_MIDI_IN = P_END, P_MIDI_OUT, P_STEP_COUNT,     /* step_count: output, for the widget */
+       P_DEV0 };   /* dev1..dev16 outputs: drift of each step for the widget, see pack_dev() */
 
 /* Pattern step values are LV2 parameters (patch:Set on midi_in), not ports: Zynthian's jalv does not
  * register notOnGUI ports, but it does register parameters. Order of fields per step: */
@@ -40,6 +41,7 @@ typedef struct {
   LV2_Atom_Sequence* out;
   const float* ctl[N_CTL];
   float* step_count_out;
+  float* dev_out[ARP_MAX_STEPS];
   uint32_t out_cap, nframes, cur_frame;
   LV2_URID_Map* map;
   LV2_URID map_urid_type;
@@ -193,6 +195,7 @@ static void connect_port(LV2_Handle h, uint32_t port, void* data) {
   else if (port == P_MIDI_OUT) A->out = (LV2_Atom_Sequence*)data;
   else if (port < P_END) A->ctl[port - P_RATE] = (const float*)data;
   else if (port == P_STEP_COUNT) A->step_count_out = (float*)data;
+  else if (port >= P_DEV0 && port < P_DEV0 + ARP_MAX_STEPS) A->dev_out[port - P_DEV0] = (float*)data;
 }
 
 static int ctl_int(const Arp* A, int port, int def) {
@@ -202,6 +205,12 @@ static int ctl_int(const Arp* A, int port, int def) {
 
 static void activate(LV2_Handle h) { (void)h; }
 static void deactivate(LV2_Handle h) { (void)h; }
+
+/* All four drifts of a step in one number: (prob+3) + 7*(shift+3) + 49*(vel+3) + 343*(gate+4). */
+static float pack_dev(const int8_t* d) {
+  return (float)((d[ARP_LANE_PROB] + ARP_MUT_MAX) + 7 * (d[ARP_LANE_SHIFT] + ARP_MUT_MAX) +
+                 49 * (d[ARP_LANE_VEL] + ARP_MUT_MAX) + 343 * (d[ARP_LANE_GATE] + ARP_MUT_MAX_GATE));
+}
 
 static void run(LV2_Handle h, uint32_t n) {
   Arp* A = (Arp*)h;
@@ -234,6 +243,8 @@ static void run(LV2_Handle h, uint32_t n) {
   }
   advance_to(A, n);
   if (A->step_count_out) *A->step_count_out = (float)(A->core.step_count & 0xFFFFFFu);
+  for (int i = 0; i < ARP_MAX_STEPS; i++)
+    if (A->dev_out[i]) *A->dev_out[i] = pack_dev(A->core.dev[i]);
 }
 
 static void cleanup(LV2_Handle h) { free(h); }

@@ -29,6 +29,7 @@ SCALES = ["Chromatic", "major", "minor", "dorian", "phrygian", "lydian", "mixoly
 SCALE_STEPS = [list(range(12)), [0, 2, 4, 5, 7, 9, 11], [0, 2, 3, 5, 7, 8, 10], [0, 2, 3, 5, 7, 9, 10],
                [0, 1, 3, 5, 7, 8, 10], [0, 2, 4, 6, 7, 9, 11], [0, 2, 4, 5, 7, 9, 10], [0, 2, 3, 5, 7, 8, 11],
                [0, 2, 3, 5, 7, 9, 11], [0, 2, 4, 7, 9], [0, 3, 5, 7, 10], [0, 3, 5, 6, 7, 10]]
+MUT_MAX = (3, 3, 3, 4)      # drift limits per row (prob, shift, vel, gate), as in arp_core.h
 DOUBLE_TAP = 0.35            # seconds: second tap on the same step resets it
 
 
@@ -154,6 +155,42 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
                 v = self._step_val(1, i)
                 self._zset("shift%d" % (i + 1), self._remap_shift(v, self.last_scale, sc))
         self.last_scale = sc
+
+    def _drift(self, lane, i):
+        """Drift of row `lane` of step i in notches, from the dev<i> output port of the plugin."""
+        try:
+            packed = int(round(float((self.monitors or {}).get("dev%d" % (i + 1), 0))))
+        except Exception:
+            return 0
+        if packed <= 0:
+            return 0
+        for r in range(lane):
+            packed //= 2 * MUT_MAX[r] + 1
+        return packed % (2 * MUT_MAX[lane] + 1) - MUT_MAX[lane]
+
+    def _drifted(self, lane, v, d):
+        """The value that plays: drawn value v moved by d notches (same rules as arp_drifted)."""
+        if d == 0:
+            return v
+        key = LANES[lane][0]
+        if key == "prob":
+            return min(max(v + 20 * d, 0), 100)
+        if key == "vel":
+            return min(max(v + 20 * d, 0), 200)
+        if key == "gate":
+            if v >= 101:
+                n = 20
+            else:
+                pct = self._zval("gate", 50) if v <= 0 else v
+                n = min(max(int(pct + 2) // 5 - 1, 0), 19)
+            n = min(max(n + d, 0), 20)
+            return 101 if n == 20 else (n + 1) * 5
+        # shift: d scale notes (semitones with Chromatic); the plugin moves the played note,
+        # here it is shown from the tonic, which is exact for Chromatic and close otherwise
+        steps = SCALE_STEPS[self._scale()]
+        allowed = [x for x in range(-27, 28) if x % 12 in steps]
+        k = min(range(len(allowed)), key=lambda j: abs(allowed[j] - v))
+        return allowed[min(max(k + d, 0), len(allowed) - 1)]
 
     def _col_at(self, x):
         w, h, pad, tab_h, num_h, x0, x1, y0, y1, cw = self.geo
@@ -299,6 +336,10 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
             ty = min(max(ty, y0 + fs_val + 2), y1 - 1) if anchor == "s" else min(ty, y1 - fs_val - 2)
             c.create_text((bx0 + bx1) / 2, ty, anchor=anchor, text=label, tags="dyn",
                           fill=(tx if active else tx_off), font=(fam, fs_val))
+            d = self._drift(lane, i) if active else 0
+            if d:                                            # mutation: where this step has drifted to
+                my = min(max(yv(self._drifted(lane, v, d)), y0 + 1), y1 - 1)
+                c.create_line(bx0 - 1, my, bx1 + 1, my, fill="#ffffff", width=3, tags=("dyn", "drift"))
 
         # step numbers (tap = Length)
         for i in range(NSTEPS):

@@ -77,9 +77,14 @@ class Ctrl:
 class Engine:
     def __init__(self):
         self.step_count = 7
+        self.dev = {}             # step -> (prob, shift, vel, gate) drift in notches
 
     def get_monitors_dict(self):
-        return {"step_count": self.step_count}
+        m = {"step_count": self.step_count}
+        for i in range(1, 17):
+            p, s, v, g = self.dev.get(i, (0, 0, 0, 0))
+            m["dev%d" % i] = float((p + 3) + 7 * (s + 3) + 49 * (v + 3) + 343 * (g + 4))   # as pack_dev()
+        return m
 
 
 class Processor:
@@ -90,6 +95,7 @@ class Processor:
         self.controllers_dict = {k: Ctrl(k, 16, 1, 16) for k in ("len_prob", "len_shift", "len_vel", "len_gate")}
         self.controllers_dict["key"] = Ctrl("key", 0, 0, 11)
         self.controllers_dict["scale"] = Ctrl("scale", 0, 0, 11)
+        self.controllers_dict["gate"] = Ctrl("gate", 50, 5, 100)
         for i in range(1, 17):
             self.controllers_dict["prob%d" % i] = Ctrl("prob%d" % i, 100, 0, 100)
             self.controllers_dict["shift%d" % i] = Ctrl("shift%d" % i, 0, -24, 24)
@@ -302,6 +308,49 @@ def main():
     w2.width, w2.height = wdg.width, wdg.height; w2.update()
     check("first redraw of a new widget doesn't touch Shift", shifts(2) == [1, 6])
     w2.destroy(); wdg.last_scale = 2
+
+    # mutation: a white mark where a drifted step plays now
+    c = wdg.widget_canvas
+    def marks():
+        return [c.coords(t) for t in c.find_withtag("drift")]
+    def mark_y_of(col):
+        for x_0, y_, x_1, _ in marks():
+            if x_0 <= cx(col) <= x_1:
+                return y_
+        return None
+    yv = lambda lane, v: y1 - wdg._frac(lane, v) * (y1 - y0)
+    for k in range(1, 17):
+        proc.controllers_dict["prob%d" % k].value = 100
+        proc.controllers_dict["vel%d" % k].value = 100
+        proc.controllers_dict["gate%d" % k].value = 0
+        proc.controllers_dict["shift%d" % k].value = 0
+    for k in ("len_prob", "len_shift", "len_vel", "len_gate"):
+        proc.controllers_dict[k].value = 16
+    proc.engine.dev = {}
+    wdg._on_press(Ev(tab(2), tab_h // 2)); wdg.update()
+    check("no drift: no marks", marks() == [])
+    proc.engine.dev = {3: (-2, 1, 2, -1), 5: (0, 0, -3, 4)}
+    wdg.update()
+    check("Vel tab: marks on drifted steps 3 and 5 only", len(marks()) == 2)
+    check("Vel step 3: +2 notches -> 140%", abs(mark_y_of(2) - yv(2, 140)) < 1.5)
+    check("Vel step 5: -3 notches -> 40%", abs(mark_y_of(4) - yv(2, 40)) < 1.5)
+    wdg._on_press(Ev(tab(0), tab_h // 2)); wdg.update()
+    check("Prob tab: step 3 -2 -> 60%, step 5 has no prob drift", len(marks()) == 1 and abs(mark_y_of(2) - yv(0, 60)) < 1.5)
+    wdg._on_press(Ev(tab(3), tab_h // 2)); wdg.update()
+    check("Gate tab: Global 50% -1 -> 45%, Global +4 -> 70%",
+          abs(mark_y_of(2) - yv(3, 45)) < 1.5 and abs(mark_y_of(4) - yv(3, 70)) < 1.5)
+    wdg._on_press(Ev(tab(1), tab_h // 2))
+    proc.controllers_dict["scale"].value = 0; wdg.update()
+    check("Shift tab, Chromatic: +1 notch -> +1", abs(mark_y_of(2) - yv(1, 1)) < 1.5)
+    proc.controllers_dict["shift3"].value = 3
+    proc.controllers_dict["scale"].value = 2; wdg.last_scale = 2; wdg.update()
+    check("Shift tab, minor: +3 with +1 notch -> +5", abs(mark_y_of(2) - yv(1, 5)) < 1.5)
+    proc.controllers_dict["len_shift"].value = 2; wdg.update()
+    check("steps beyond the row length show no marks", marks() == [])
+    proc.controllers_dict["len_shift"].value = 16
+    proc.engine.dev = {}
+    proc.controllers_dict["scale"].value = 0; wdg.last_scale = 0
+    proc.controllers_dict["shift3"].value = 0
 
     # drawing does not crash with the playing step and resizes
     for cs in (0, 1, 16, 1000):
