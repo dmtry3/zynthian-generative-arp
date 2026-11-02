@@ -25,6 +25,10 @@ LANE_COLORS = ["#4dabf7", "#ffa94d", "#69db7c", "#9775fa"]
 KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 SCALES = ["Chromatic", "major", "minor", "dorian", "phrygian", "lydian", "mixolydian",
           "harm. minor", "mel. minor", "major pent.", "minor pent.", "blues"]
+# semitones of each scale above the tonic (same table as arp_core.c)
+SCALE_STEPS = [list(range(12)), [0, 2, 4, 5, 7, 9, 11], [0, 2, 3, 5, 7, 8, 10], [0, 2, 3, 5, 7, 9, 10],
+               [0, 1, 3, 5, 7, 8, 10], [0, 2, 4, 6, 7, 9, 11], [0, 2, 4, 5, 7, 9, 10], [0, 2, 3, 5, 7, 8, 11],
+               [0, 2, 3, 5, 7, 9, 11], [0, 2, 4, 7, 9], [0, 3, 5, 7, 10], [0, 3, 5, 6, 7, 10]]
 DOUBLE_TAP = 0.35            # seconds: second tap on the same step resets it
 
 
@@ -113,7 +117,20 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
         key, _, lo, hi, _ = LANES[lane]
         if key == "gate":
             return GATE_VALUES[int(round(f * (len(GATE_VALUES) - 1)))]
-        return int(round(lo + f * (hi - lo)))
+        v = lo + f * (hi - lo)
+        if key == "shift":
+            return self._snap_shift(v)
+        return int(round(v))
+
+    def _scale(self):
+        sc = int(round(self._zval("scale", 0)))
+        return sc if 0 <= sc < len(SCALE_STEPS) else 0
+
+    def _snap_shift(self, v):
+        """With a scale, Shift values stick to the scale intervals above the tonic (0, 2, 3, 5 ... for minor)."""
+        steps = SCALE_STEPS[self._scale()]
+        allowed = [x for x in range(-24, 25) if x % 12 in steps]
+        return min(allowed, key=lambda x: (abs(x - v), abs(x)))
 
     def _col_at(self, x):
         w, h, pad, tab_h, num_h, x0, x1, y0, y1, cw = self.geo
@@ -227,10 +244,10 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
             base = y1
         if key == "vel":
             c.create_line(x0, yv(100), x1, yv(100), fill="#606060", dash=(3, 3), tags="dyn")
-        if key == "shift":                                   # units of Shift: semitones or scale degrees
-            sc = int(round(self._zval("scale", 0)))
-            if 0 < sc < len(SCALES):
-                unit = "%s %s \u00b7 steps" % (KEYS[int(round(self._zval("key", 0))) % 12], SCALES[sc])
+        if key == "shift":                                   # Shift is in semitones; show the scale it sticks to
+            sc = self._scale()
+            if sc > 0:
+                unit = "semitones \u00b7 %s %s" % (KEYS[int(round(self._zval("key", 0))) % 12], SCALES[sc])
             else:
                 unit = "semitones"
             c.create_text(x1 - 2, y0 + 1, anchor="ne", text=unit, tags="dyn", fill=tx_off,

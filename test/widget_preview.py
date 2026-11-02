@@ -248,9 +248,23 @@ def main():
     wdg._on_press(Ev(tab(1), tab_h // 2)); wdg.update()
     check("Shift tab, Chromatic: 'semitones'", "semitones" in texts())
     proc.controllers_dict["key"].value = 9; proc.controllers_dict["scale"].value = 2; wdg.update()
-    check("Shift tab, A minor: 'A minor \u00b7 steps'", "A minor \u00b7 steps" in texts())
+    check("Shift tab, A minor: 'semitones \u00b7 A minor'", "semitones \u00b7 A minor" in texts())
+    # with a scale, Shift values stick to the scale intervals (minor: 0 2 3 5 7 8 10 12 ...)
+    ys = lambda v: y1 - (v + 24) / 48.0 * (y1 - y0)
+    got = []
+    for raw in (1, 4, 6, 11, -1, -4, 13):
+        time.sleep(DT)
+        wdg._on_press(Ev(cx(5), ys(raw))); wdg._on_release(None)
+        got.append(proc.v("shift6"))
+    check("A minor: Shift sticks to scale intervals (1,4,6,11,-1,-4,13 -> %s)" % got,
+          all(v % 12 in (0, 2, 3, 5, 7, 8, 10) for v in got) and got[1] in (3, 5) and got[3] in (10, 12))
+    proc.controllers_dict["scale"].value = 0
+    time.sleep(DT)
+    wdg._on_press(Ev(cx(5), ys(1))); wdg._on_release(None)
+    check("Chromatic: any semitone (1)", proc.v("shift6") == 1)
+    proc.controllers_dict["scale"].value = 2
     wdg._on_press(Ev(tab(0), tab_h // 2)); wdg.update()
-    check("other tabs don't show the scale", not any("steps" in t or "semitones" in t for t in texts()))
+    check("other tabs don't show the scale", not any("semitones" in t for t in texts()))
 
     # drawing does not crash with the playing step and resizes
     for cs in (0, 1, 16, 1000):

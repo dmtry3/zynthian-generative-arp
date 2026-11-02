@@ -14,7 +14,7 @@
 /* Rows (lanes) of the pattern; each has its own length (polyrhythm). */
 enum { ARP_LANE_PROB, ARP_LANE_SHIFT, ARP_LANE_VEL, ARP_LANE_GATE, ARP_NLANES };
 
-/* Scales for Shift: Chromatic = semitones, otherwise Shift counts scale degrees. */
+/* Scales: Shift is in semitones; with a scale the shifted note is pulled to the nearest scale note. */
 enum { ARP_SCALE_CHROMATIC, ARP_SCALE_MAJOR, ARP_SCALE_MINOR, ARP_SCALE_DORIAN, ARP_SCALE_PHRYGIAN,
        ARP_SCALE_LYDIAN, ARP_SCALE_MIXOLYDIAN, ARP_SCALE_HARM_MINOR, ARP_SCALE_MEL_MINOR,
        ARP_SCALE_MAJ_PENT, ARP_SCALE_MIN_PENT, ARP_SCALE_BLUES, ARP_NSCALES };
@@ -75,7 +75,7 @@ void arp_set_length(ArpCore* a, int length);
 void arp_set_step(ArpCore* a, int i, int prob, int shift, int vel, int gate);
 /* Key 0..11 (C..B) and scale for Shift. */
 void arp_set_scale(ArpCore* a, int key, int scale);
-/* note moved by n semitones (Chromatic) or n scale degrees; may return a value outside 0..127. */
+/* note + n semitones, pulled into the scale (n != 0); may return a value outside 0..127. */
 int  arp_shift_note(const ArpCore* a, int note, int n);
 /* Latch on: the chord stays after the keys are released; the next chord (pressed after all keys
  * were released) replaces it. Latch off: only the keys still down are kept. */

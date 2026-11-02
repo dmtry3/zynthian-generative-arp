@@ -46,12 +46,12 @@ static int in_scale(const ArpCore* a, int p) {
 
 int arp_shift_note(const ArpCore* a, int note, int n) {
   if (n == 0) return note;                       /* played note stays as played, even off the scale */
-  if (a->scale == ARP_SCALE_CHROMATIC) return note + n;
-  int p = note;
-  while (!in_scale(a, p)) p--;                   /* off the scale: count from the degree below */
-  const int dir = n > 0 ? 1 : -1;
-  for (int k = 0; k < n * dir; k++) {
-    do { p += dir; } while (!in_scale(a, p));
+  int p = note + n;                              /* Shift is always in semitones */
+  if (a->scale == ARP_SCALE_CHROMATIC || in_scale(a, p)) return p;
+  const int dir = n > 0 ? 1 : -1;                /* off the scale: nearest scale note, ties toward the shift */
+  for (int d = 1; d < 12; d++) {
+    if (in_scale(a, p + dir * d)) return p + dir * d;
+    if (in_scale(a, p - dir * d)) return p - dir * d;
   }
   return p;
 }

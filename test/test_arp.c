@@ -623,30 +623,28 @@ static void test_lane_reset_and_change(void) {
 static void test_scale_shift(void) {
   ArpCore a; arp_init(&a);
   struct { int key, scale, note, n, exp; const char* what; } t[] = {
-    { 0, ARP_SCALE_CHROMATIC, 60,  5, 65, "Chromatic: semitones" },
-    { 0, ARP_SCALE_MAJOR,     64,  1, 65, "C major: E +1 = F" },
-    { 0, ARP_SCALE_MAJOR,     60,  2, 64, "C major: C +2 = E" },
-    { 0, ARP_SCALE_MAJOR,     60,  7, 72, "C major: C +7 = C an octave up" },
-    { 0, ARP_SCALE_MAJOR,     60, -1, 59, "C major: C -1 = B below" },
-    { 0, ARP_SCALE_MAJOR,     60, -8, 47, "C major: C -8 = B an octave lower" },
-    { 9, ARP_SCALE_MINOR,     57,  2, 60, "A minor: A +2 = C" },
-    { 9, ARP_SCALE_MINOR,     57, -1, 55, "A minor: A -1 = G" },
-    { 9, ARP_SCALE_MINOR,     57,  7, 69, "A minor: A +7 = A an octave up" },
-    { 2, ARP_SCALE_DORIAN,    62,  5, 71, "D dorian: D +5 = B" },
+    { 0, ARP_SCALE_CHROMATIC, 60,  5, 65, "Chromatic: any semitone" },
+    { 0, ARP_SCALE_CHROMATIC, 60,  1, 61, "Chromatic: C +1 = C#" },
+    { 0, ARP_SCALE_MAJOR,     64,  1, 65, "C major: E +1 = F (in scale)" },
+    { 0, ARP_SCALE_MAJOR,     60,  2, 62, "C major: C +2 = D" },
+    { 0, ARP_SCALE_MAJOR,     60, 12, 72, "C major: C +12 = C" },
+    { 0, ARP_SCALE_MAJOR,     60, -1, 59, "C major: C -1 = B" },
+    { 0, ARP_SCALE_MAJOR,     60,  1, 62, "C major: C +1 = C# -> tie C/D, toward the shift: D" },
+    { 0, ARP_SCALE_MAJOR,     60, -2, 57, "C major: C -2 = A# -> tie A/B, toward the shift: A" },
+    { 9, ARP_SCALE_MINOR,     57,  3, 60, "A minor: A +3 = C" },
+    { 9, ARP_SCALE_MINOR,     60,  3, 64, "A minor: C +3 = D# -> tie D/E, up: E" },
+    { 9, ARP_SCALE_MINOR,     60,  4, 64, "A minor: C +4 = E" },
+    { 9, ARP_SCALE_HARM_MINOR,57, 11, 68, "A harmonic minor: A +11 = G#" },
     { 4, ARP_SCALE_PHRYGIAN,  64,  1, 65, "E phrygian: E +1 = F" },
-    { 5, ARP_SCALE_LYDIAN,    65,  3, 71, "F lydian: F +3 = B" },
-    { 7, ARP_SCALE_MIXOLYDIAN,67,  6, 77, "G mixolydian: G +6 = F" },
-    { 9, ARP_SCALE_HARM_MINOR,57,  6, 68, "A harmonic minor: A +6 = G#" },
-    { 9, ARP_SCALE_MEL_MINOR, 57,  5, 66, "A melodic minor: A +5 = F#" },
-    { 0, ARP_SCALE_MAJ_PENT,  64,  1, 67, "C major pentatonic: E +1 = G" },
-    { 0, ARP_SCALE_MAJ_PENT,  60,  5, 72, "C major pentatonic: C +5 = C an octave up" },
-    { 9, ARP_SCALE_MIN_PENT,  57,  2, 62, "A minor pentatonic: A +2 = D" },
-    { 9, ARP_SCALE_BLUES,     57,  3, 63, "A blues: A +3 = D# (blue note)" },
+    { 5, ARP_SCALE_LYDIAN,    65,  6, 71, "F lydian: F +6 = B" },
+    { 0, ARP_SCALE_MAJ_PENT,  64,  2, 67, "C major pent.: E +2 = F# -> nearest G" },
+    { 9, ARP_SCALE_BLUES,     57,  6, 63, "A blues: A +6 = D# (blue note)" },
+    { 9, ARP_SCALE_BLUES,     57,  1, 57, "A blues: A +1 = A# -> nearest A" },
     { 0, ARP_SCALE_MAJOR,     61,  0, 61, "off-scale note with Shift 0 stays as played" },
-    { 0, ARP_SCALE_MAJOR,     61,  1, 62, "off-scale C# +1 counts from C: D" },
-    { 0, ARP_SCALE_MAJOR,     61, -1, 59, "off-scale C# -1 counts from C: B" },
+    { 0, ARP_SCALE_MAJOR,     61,  1, 62, "off-scale C# +1 = D" },
+    { 0, ARP_SCALE_MAJOR,     61, -1, 60, "off-scale C# -1 = C" },
     { 7, ARP_SCALE_MAJOR,     66,  1, 67, "G major: F# +1 = G (key moves the scale)" },
-    { 1, ARP_SCALE_MAJOR,     61,  2, 65, "C# major: C# +2 = F" },
+    { 7, ARP_SCALE_MAJOR,     60,  6, 66, "G major: C +6 = F# (in G major)" },
   };
   int bad = 0;
   for (unsigned k = 0; k < sizeof t / sizeof t[0]; k++) {
@@ -654,7 +652,7 @@ static void test_scale_shift(void) {
     int got = arp_shift_note(&a, t[k].note, t[k].n);
     if (got != t[k].exp) { printf("FAIL: %s (got %d, exp %d)\n", t[k].what, got, t[k].exp); bad++; }
   }
-  printf("%s: scale degree shifts (%u cases)\n", bad ? "FAIL" : "PASS", (unsigned)(sizeof t / sizeof t[0]));
+  printf("%s: semitone shifts pulled into the scale (%u cases)\n", bad ? "FAIL" : "PASS", (unsigned)(sizeof t / sizeof t[0]));
   failures += bad ? 1 : 0;
 }
 
@@ -663,22 +661,21 @@ static void test_scale_in_pattern(void) {
   arp_set_scale(&a, 9, ARP_SCALE_MINOR);                  /* A minor */
   arp_note_on(&a, 0, 57, 100);                            /* A */
   arp_set_length(&a, 4);
-  arp_set_step(&a, 1, 100, 2, 100, 0);                    /* +2 -> C */
-  arp_set_step(&a, 2, 100, -1, 100, 0);                   /* -1 -> G */
-  arp_set_step(&a, 3, 100, 24, 100, 0);                   /* +24 degrees */
+  arp_set_step(&a, 1, 100, 3, 100, 0);                    /* +3 -> C */
+  arp_set_step(&a, 2, 100, -1, 100, 0);                   /* -1 = G# -> tie G/A, down: G */
+  arp_set_step(&a, 3, 100, 24, 100, 0);                   /* +24 -> A two octaves up */
   arp_process(&a, 0, 240 * 4, collect, &l);
-  /* +24 degrees in a 7-note scale = 3 octaves + 3 degrees: A(57)+36 = 93 (A), +3 degrees -> B C D = 98 */
-  static const int exp[] = { 57, 60, 55, 98 };
-  check_seq("A minor pattern: 0, +2, -1, +24 degrees", &l, exp, 4);
+  static const int exp[] = { 57, 60, 55, 81 };
+  check_seq("A minor pattern: 0, +3, -1, +24 semitones", &l, exp, 4);
 
   Log l2 = {0}; arp_init(&a);
   arp_set_scale(&a, 0, ARP_SCALE_MAJOR);
   arp_note_on(&a, 0, 120, 100);
   arp_set_length(&a, 1);
-  arp_set_step(&a, 0, 100, 5, 100, 0);                    /* 120 (C) +5 degrees = A 129 > 127 */
+  arp_set_step(&a, 0, 100, 12, 100, 0);                   /* 120 + 12 = 132 > 127 */
   arp_process(&a, 0, 240 * 2, collect, &l2);
   static const int none[] = { 0 };
-  check_seq("degree shift above 127 makes the step silent", &l2, none, 0);
+  check_seq("shift above 127 makes the step silent", &l2, none, 0);
 
   Log l3 = {0}; arp_init(&a); chord(&a);                  /* Chromatic default = old behaviour */
   arp_set_length(&a, 4);
