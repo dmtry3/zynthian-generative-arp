@@ -244,11 +244,11 @@ def main():
     proc.engine.step_count = 0; wdg.update()
     check("no playhead when idle", playhead_col() == 0)
 
-    # Shift tab shows the units: semitones (Chromatic) or degrees of the chosen scale
+    # Shift tab shows the scale it sticks to (nothing for Chromatic)
     wdg._on_press(Ev(tab(1), tab_h // 2)); wdg.update()
-    check("Shift tab, Chromatic: 'semitones'", "semitones" in texts())
+    check("Shift tab, Chromatic: no scale label", not any("minor" in t or "major" in t or "semitones" in t for t in texts()))
     proc.controllers_dict["key"].value = 9; proc.controllers_dict["scale"].value = 2; wdg.update()
-    check("Shift tab, A minor: 'semitones \u00b7 A minor'", "semitones \u00b7 A minor" in texts())
+    check("Shift tab, A minor: 'A minor'", "A minor" in texts())
     # with a scale, Shift values stick to the scale intervals (minor: 0 2 3 5 7 8 10 12 ...)
     ys = lambda v: y1 - (v + 24) / 48.0 * (y1 - y0)
     got = []
@@ -264,7 +264,7 @@ def main():
     check("Chromatic: any semitone (1)", proc.v("shift6") == 1)
     proc.controllers_dict["scale"].value = 2
     wdg._on_press(Ev(tab(0), tab_h // 2)); wdg.update()
-    check("other tabs don't show the scale", not any("semitones" in t for t in texts()))
+    check("other tabs don't show the scale", "A minor" not in texts())
 
     # changing the scale moves Shift steps into the new scale
     def set_shifts(vals):

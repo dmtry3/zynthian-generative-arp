@@ -268,14 +268,12 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
             base = y1
         if key == "vel":
             c.create_line(x0, yv(100), x1, yv(100), fill="#606060", dash=(3, 3), tags="dyn")
-        if key == "shift":                                   # Shift is in semitones; show the scale it sticks to
+        if key == "shift":                                   # Shift sticks to this scale (nothing for Chromatic)
             sc = self._scale()
             if sc > 0:
-                unit = "semitones \u00b7 %s %s" % (KEYS[int(round(self._zval("key", 0))) % 12], SCALES[sc])
-            else:
-                unit = "semitones"
-            c.create_text(x1 - 2, y0 + 1, anchor="ne", text=unit, tags="dyn", fill=tx_off,
-                          font=(fam, max(7, fs_tab - 2)))
+                unit = "%s %s" % (KEYS[int(round(self._zval("key", 0))) % 12], SCALES[sc])
+                c.create_text(x1 - 2, y0 + 1, anchor="ne", text=unit, tags="dyn", fill=tx_off,
+                              font=(fam, max(6, int(fs_tab * 0.45))))
 
         # bars
         for i in range(NSTEPS):
