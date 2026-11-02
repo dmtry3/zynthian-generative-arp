@@ -232,7 +232,7 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
         fam = zynthian_gui_config.font_family
         tx = zynthian_gui_config.color_tx
         tx_off = zynthian_gui_config.color_tx_off
-        fs_tab = max(8, tab_h // 2)
+        fs_tab = max(7, int(tab_h * 0.4))
         fs_val = max(7, min(int(cw * 0.32), (y1 - y0) // 7))
         fs_num = max(7, num_h // 2 + 1)
 
@@ -273,7 +273,7 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
             if sc > 0:
                 unit = "%s %s" % (KEYS[int(round(self._zval("key", 0))) % 12], SCALES[sc])
                 c.create_text(x1 - 2, y0 + 1, anchor="ne", text=unit, tags="dyn", fill=tx_off,
-                              font=(fam, max(6, int(fs_tab * 0.45))))
+                              font=(fam, max(6, int(tab_h * 0.22))))
 
         # bars
         for i in range(NSTEPS):
