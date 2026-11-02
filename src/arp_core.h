@@ -10,6 +10,12 @@
 #define ARP_MAX_STEPS 16
 #define ARP_GATE_GLOBAL 0     /* step gate: use the global Gate */
 #define ARP_GATE_TIE 101      /* step gate: legato into the next step */
+/* Step mutation: one notch of each row and how far a step may drift from the drawn value (in notches). */
+#define ARP_MUT_PROB_NOTCH 20 /* % */
+#define ARP_MUT_VEL_NOTCH 20  /* % */
+#define ARP_MUT_GATE_NOTCH 5  /* % of the step */
+#define ARP_MUT_MAX 3         /* prob, shift (scale notes), vel */
+#define ARP_MUT_MAX_GATE 4
 
 /* Rows (lanes) of the pattern; each has its own length (polyrhythm). */
 enum { ARP_LANE_PROB, ARP_LANE_SHIFT, ARP_LANE_VEL, ARP_LANE_GATE, ARP_NLANES };
@@ -64,6 +70,8 @@ typedef struct {
   uint16_t loop[ARP_MAX_STEPS]; /* Loop order: relative position in the chord, 0 = lowest note */
   int loop_len;                 /* 1..16 */
   int mut_notes;                /* 0..100 %: chance that the loop step gets a new random position */
+  int mut_steps;                /* 0..100 %: chance that a played step drifts by one notch */
+  int8_t dev[ARP_MAX_STEPS][ARP_NLANES];   /* drift from the drawn steps, in notches */
   uint32_t mrng;
 
   int sounding;                 /* a generated note is on */
@@ -82,9 +90,18 @@ void arp_set_length(ArpCore* a, int length);
 void arp_set_step(ArpCore* a, int i, int prob, int shift, int vel, int gate);
 /* Loop order: length 1..16 and mutation 0..100 % (0 = the loop is frozen). */
 void arp_set_loop(ArpCore* a, int notes_pct, int loop_len);
-/* Seed of the mutation generator; arp_reset_mutation() makes a new random loop. */
+/* Step mutation 0..100 %: when a step plays, with this chance one of its rows (the step that row
+ * reads) drifts by one notch; 0 = the drift is frozen. */
+void arp_set_mut_steps(ArpCore* a, int pct);
+/* Seed of the mutation generator; arp_reset_mutation() makes a new random loop and clears the drift. */
 void arp_seed_mutation(ArpCore* a, uint32_t seed);
 void arp_reset_mutation(ArpCore* a);
+/* Clear the drift of one row of step i (the step was edited). */
+void arp_clear_mutation(ArpCore* a, int i, int lane);
+/* Value of row lane (prob, vel, gate) drawn as v after a drift of d notches; shift is returned as is. */
+int  arp_drifted(const ArpCore* a, int lane, int v, int d);
+/* One notch of drift for row lane of step i (what Steps % does when the step plays). */
+void arp_mutate_step(ArpCore* a, int i, int lane);
 /* Key 0..11 (C..B) and scale for Shift. */
 void arp_set_scale(ArpCore* a, int key, int scale);
 /* note + n semitones, pulled into the scale (n != 0); may return a value outside 0..127. */

@@ -776,6 +776,124 @@ static void test_loop_mutation(void) {
   failures += !same_logs(&l1, &l2);
 }
 
+/* ---------- step mutation ---------- */
+
+static void test_step_mutation(void) {
+  ArpCore a; Log l = {0};
+  /* single key C4, vel 100, C major, everything drifts */
+  arp_init(&a); arp_note_on(&a, 0, 60, 100);
+  arp_set_scale(&a, 0, ARP_SCALE_MAJOR);
+  arp_set_mut_steps(&a, 100);
+  arp_process(&a, 0, 240 * 300, collect, &l);
+  int ok_p = 1, ok_v = 1, ok_g = 1, moved_p = 0, moved_v = 0, moved_g = 0, nons = 0;
+  for (int i = 0; i < l.n; i++) {
+    if ((l.ev[i].st & 0xF0) != 0x90) continue;
+    nons++;
+    int p = l.ev[i].d1, v = l.ev[i].d2;
+    /* C major, at most 3 scale notes from C4: F3 .. F4 */
+    if (!(p == 53 || p == 55 || p == 57 || p == 59 || p == 60 || p == 62 || p == 64 || p == 65)) ok_p = 0;
+    if (p != 60) moved_p = 1;
+    if (v < 40 || v > 127) ok_v = 0;          /* 100 % +- 3 x 20 % */
+    if (v != 100) moved_v = 1;
+    for (int j = i + 1; j < l.n; j++)
+      if ((l.ev[j].st & 0xF0) == 0x80 && l.ev[j].d1 == p) {
+        double len = l.ev[j].tick - l.ev[i].tick;   /* global 50 % = 120 ticks, +- 4 x 5 % */
+        if (len < 72 - 1e-6 || len > 168 + 1e-6) ok_g = 0;
+        if (fabs(len - 120) > 1e-6) moved_g = 1;
+        break;
+      }
+  }
+  int lim_ok = 1;
+  for (int i = 0; i < ARP_MAX_STEPS; i++)
+    for (int r = 0; r < ARP_NLANES; r++) {
+      int lim = r == ARP_LANE_GATE ? ARP_MUT_MAX_GATE : ARP_MUT_MAX;
+      if (a.dev[i][r] < -lim || a.dev[i][r] > lim) lim_ok = 0;
+    }
+  printf("%s: Steps 100%%: pitch stays in the scale within 3 notes, and moves\n", ok_p && moved_p ? "PASS" : "FAIL");
+  printf("%s: Steps 100%%: velocity within +-60%%, and moves\n", ok_v && moved_v ? "PASS" : "FAIL");
+  printf("%s: Steps 100%%: gate within +-4 notches of 5%%, and moves\n", ok_g && moved_g ? "PASS" : "FAIL");
+  printf("%s: drift never exceeds its limits\n", lim_ok ? "PASS" : "FAIL");
+  printf("%s: drifting prob makes some steps silent (%d notes of 300)\n", nons < 300 && nons > 150 ? "PASS" : "FAIL", nons);
+  failures += !(ok_p && moved_p) + !(ok_v && moved_v) + !(ok_g && moved_g) + !lim_ok + !(nons < 300 && nons > 150);
+
+  /* back to 0 %: frozen */
+  int8_t saved[ARP_MAX_STEPS][ARP_NLANES];
+  memcpy(saved, a.dev, sizeof saved);
+  arp_set_mut_steps(&a, 0);
+  Log l2 = {0};
+  arp_process(&a, 240 * 300, 240 * 364, collect, &l2);
+  int frozen = !memcmp(saved, a.dev, sizeof saved), any = 0;
+  for (int i = 0; i < ARP_MAX_STEPS; i++) for (int r = 0; r < ARP_NLANES; r++) any |= a.dev[i][r];
+  printf("%s: Steps 0%%: the grown drift is kept\n", frozen && any ? "PASS" : "FAIL");
+  failures += !(frozen && any);
+
+  /* editing a step clears that row of that step; reset clears all */
+  int i0 = -1, r0 = -1;
+  for (int i = 0; i < ARP_MAX_STEPS && i0 < 0; i++) for (int r = 0; r < ARP_NLANES; r++) if (a.dev[i][r]) { i0 = i; r0 = r; break; }
+  int other = 0;
+  for (int i = 0; i < ARP_MAX_STEPS; i++) for (int r = 0; r < ARP_NLANES; r++) if ((i != i0 || r != r0) && a.dev[i][r]) other = 1;
+  arp_clear_mutation(&a, i0, r0);
+  int cleared = a.dev[i0][r0] == 0, kept = 0;
+  for (int i = 0; i < ARP_MAX_STEPS; i++) for (int r = 0; r < ARP_NLANES; r++) kept |= a.dev[i][r];
+  printf("%s: clearing one step row keeps the others\n", cleared && (kept || !other) ? "PASS" : "FAIL");
+  failures += !(cleared && (kept || !other));
+  arp_reset_mutation(&a);
+  any = 0;
+  for (int i = 0; i < ARP_MAX_STEPS; i++) for (int r = 0; r < ARP_NLANES; r++) any |= a.dev[i][r];
+  printf("%s: reset clears all drift\n", !any ? "PASS" : "FAIL");
+  failures += any;
+}
+
+static void test_mutation_details(void) {
+  ArpCore a; int g[64], n;
+  /* shift drift in Chromatic is in semitones, applied after the drawn shift */
+  arp_init(&a); arp_note_on(&a, 0, 60, 100);
+  arp_set_length(&a, 1);
+  arp_set_step(&a, 0, 100, 7, 100, ARP_GATE_GLOBAL);
+  a.dev[0][ARP_LANE_SHIFT] = -2;
+  n = play(&a, 0, 240 * 2, g);
+  static const int e1[] = { 65, 65 };
+  expect("Chromatic: shift +7 with drift -2 -> F", g, n, e1, 2);
+  /* in A minor the drift walks scale notes */
+  arp_init(&a); arp_note_on(&a, 0, 57, 100);
+  arp_set_length(&a, 1); arp_set_scale(&a, 9, ARP_SCALE_MINOR);
+  a.dev[0][ARP_LANE_SHIFT] = 3;
+  n = play(&a, 0, 240, g);
+  static const int e2[] = { 62 };   /* A +3 scale notes: B C D */
+  expect("A minor: drift +3 from A -> D", g, n, e2, 1);
+  a.dev[0][ARP_LANE_SHIFT] = -2;
+  n = play(&a, 240, 480, g);
+  static const int e3[] = { 53 };   /* A -2: G F */
+  expect("A minor: drift -2 from A -> F", g, n, e3, 1);
+
+  /* gate drift: Tie can't go higher, Global counts from the global gate */
+  arp_init(&a);
+  if (arp_drifted(&a, ARP_LANE_GATE, ARP_GATE_TIE, 1) != ARP_GATE_TIE || arp_drifted(&a, ARP_LANE_GATE, ARP_GATE_TIE, -1) != 100 ||
+      arp_drifted(&a, ARP_LANE_GATE, ARP_GATE_GLOBAL, 2) != 60 || arp_drifted(&a, ARP_LANE_GATE, 5, -1) != 5 ||
+      arp_drifted(&a, ARP_LANE_PROB, 100, 1) != 100 || arp_drifted(&a, ARP_LANE_PROB, 100, -2) != 60 ||
+      arp_drifted(&a, ARP_LANE_VEL, 190, 1) != 200) {
+    printf("FAIL: drifted values (gate Tie/Global/5%%, prob, vel clamps)\n"); failures++;
+  } else printf("PASS: drifted values (gate Tie/Global/5%%, prob, vel clamps)\n");
+
+  /* a clamped direction is not chosen: prob 100 can only go down */
+  arp_init(&a); arp_seed_mutation(&a, 5);
+  int ok = 1;
+  for (int k = 0; k < 50; k++) { a.dev[3][ARP_LANE_PROB] = 0; arp_mutate_step(&a, 3, ARP_LANE_PROB); if (a.dev[3][ARP_LANE_PROB] != -1) ok = 0; }
+  a.dev[3][ARP_LANE_PROB] = -3;
+  arp_mutate_step(&a, 3, ARP_LANE_PROB);
+  printf("%s: prob 100%% drifts only down; at the limit only back\n", ok && a.dev[3][ARP_LANE_PROB] == -2 ? "PASS" : "FAIL");
+  failures += !(ok && a.dev[3][ARP_LANE_PROB] == -2);
+
+  /* Steps 0 does not touch the mutation generator: Loop stays as it was */
+  ArpCore b, c;
+  loop_core(&b, 4, 30); loop_core(&c, 4, 30);
+  arp_set_mut_steps(&c, 0);
+  int gb[64], gc[64];
+  int nb = play(&b, 0, 240 * 40, gb), nc = play(&c, 0, 240 * 40, gc);
+  printf("%s: Steps 0%% leaves Loop mutation unchanged\n", nb == nc && !memcmp(gb, gc, sizeof(int) * nb) ? "PASS" : "FAIL");
+  failures += !(nb == nc && !memcmp(gb, gc, sizeof(int) * nb));
+}
+
 int main(void) {
   test_up_one_block();
   test_chunks();
@@ -809,6 +927,8 @@ int main(void) {
   test_scale_in_pattern();
   test_loop_frozen();
   test_loop_mutation();
+  test_step_mutation();
+  test_mutation_details();
   printf(failures ? "\n%d FAILED\n" : "\nALL PASSED\n", failures);
   return failures ? 1 : 0;
 }

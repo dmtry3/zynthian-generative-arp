@@ -23,7 +23,7 @@
  * so a control port with a higher index would be overwritten by a parameter in its list. */
 enum { P_RATE = 0, P_GATE, P_ORDER, P_OCTAVES, P_LATCH,
        P_LEN0, P_KEY = P_LEN0 + ARP_NLANES, P_SCALE,     /* row lengths: prob, shift, vel, gate */
-       P_MUT_NOTES, P_LOOP_LEN, P_RESET,                  /* mutation; any change of reset = reset */
+       P_MUT_NOTES, P_LOOP_LEN, P_MUT_STEPS, P_RESET,     /* mutation; any change of reset = reset */
        P_END, P_MIDI_IN = P_END, P_MIDI_OUT, P_STEP_COUNT };   /* step_count: output, for the widget */
 
 /* Pattern step values are LV2 parameters (patch:Set on midi_in), not ports: Zynthian's jalv does not
@@ -122,6 +122,7 @@ static void handle_patch_set(Arp* A, const LV2_Atom_Object* obj) {
       if (A->param[i][f] == key) {
         A->stepv[i][f] = (int)lrint(numv(A, val, field_defaults[f]));
         apply_step(A, i);
+        arp_clear_mutation(&A->core, i, f);   /* an edited step starts again from the drawn value */
         return;
       }
 }
@@ -214,6 +215,7 @@ static void run(LV2_Handle h, uint32_t n) {
   for (int r = 0; r < ARP_NLANES; r++) arp_set_lane_length(&A->core, r, ctl_int(A, P_LEN0 + r, ARP_MAX_STEPS));
   arp_set_scale(&A->core, ctl_int(A, P_KEY, 0), ctl_int(A, P_SCALE, ARP_SCALE_CHROMATIC));
   arp_set_loop(&A->core, ctl_int(A, P_MUT_NOTES, 0), ctl_int(A, P_LOOP_LEN, 8));
+  arp_set_mut_steps(&A->core, ctl_int(A, P_MUT_STEPS, 0));
   const int rs = ctl_int(A, P_RESET, 0) != 0;
   if (A->reset_prev >= 0 && rs != A->reset_prev) arp_reset_mutation(&A->core);
   A->reset_prev = rs;

@@ -103,8 +103,15 @@ void arp_set_loop(ArpCore* a, int notes_pct, int loop_len) {
 
 void arp_seed_mutation(ArpCore* a, uint32_t seed) { a->mrng = seed ? seed : 0x2545F491u; }
 
+void arp_set_mut_steps(ArpCore* a, int pct) { a->mut_steps = clampi(pct, 0, 100); }
+
 void arp_reset_mutation(ArpCore* a) {
   for (int i = 0; i < ARP_MAX_STEPS; i++) a->loop[i] = (uint16_t)(mrnd(a) >> 16);
+  memset(a->dev, 0, sizeof a->dev);
+}
+
+void arp_clear_mutation(ArpCore* a, int i, int lane) {
+  if (i >= 0 && i < ARP_MAX_STEPS && lane >= 0 && lane < ARP_NLANES) a->dev[i][lane] = 0;
 }
 
 static int chance(ArpCore* a, int pct) { return pct >= 100 || (pct > 0 && (int)(mrnd(a) % 100u) < pct); }
@@ -266,6 +273,58 @@ void arp_silence(ArpCore* a, double tick, arp_emit_fn emit, void* user) {
   if (a->sounding) note_off_at(a, tick, emit, user);
 }
 
+/* Gate of a step as a notch 0..20 (5 %..100 %, 20 = Tie); Global counts from the global Gate. */
+static int gate_notch(const ArpCore* a, int gate) {
+  if (gate == ARP_GATE_TIE) return 20;
+  int pct = (gate == ARP_GATE_GLOBAL) ? a->gate_pct : gate;
+  return clampi((pct + 2) / 5 - 1, 0, 19);
+}
+
+/* Value of a row after a drift of d notches (shift: d is applied to the pitch, see drift_pitch). */
+int arp_drifted(const ArpCore* a, int lane, int v, int d) {
+  if (d == 0) return v;
+  switch (lane) {
+  case ARP_LANE_PROB: return clampi(v + d * ARP_MUT_PROB_NOTCH, 0, 100);
+  case ARP_LANE_VEL:  return clampi(v + d * ARP_MUT_VEL_NOTCH, 0, 200);
+  case ARP_LANE_GATE: { int n = clampi(gate_notch(a, v) + d, 0, 20); return n == 20 ? ARP_GATE_TIE : (n + 1) * 5; }
+  default: return v;
+  }
+}
+
+/* Pitch moved by d scale notes (semitones with Chromatic). */
+static int drift_pitch(const ArpCore* a, int p, int d) {
+  const int dir = d > 0 ? 1 : -1;
+  for (int k = 0; k != d; k += dir) {
+    p += dir;
+    if (a->scale != ARP_SCALE_CHROMATIC)
+      for (int j = 0; j < 11 && !in_scale(a, p); j++) p += dir;
+  }
+  return p;
+}
+
+/* One notch of drift for row r of step i: a random direction that changes the value and stays within
+ * the limit (at the limit it can only go back). */
+void arp_mutate_step(ArpCore* a, int i, int r) {
+  const int lim = (r == ARP_LANE_GATE) ? ARP_MUT_MAX_GATE : ARP_MUT_MAX;
+  const int d = a->dev[i][r];
+  int v = 0;
+  switch (r) {
+  case ARP_LANE_PROB: v = a->steps[i].prob; break;
+  case ARP_LANE_VEL:  v = a->steps[i].vel; break;
+  case ARP_LANE_GATE: v = a->steps[i].gate; break;
+  default: break;
+  }
+  int ok[2], n = 0;
+  for (int dir = -1; dir <= 1; dir += 2) {
+    int nd = d + dir;
+    if (nd < -lim || nd > lim) continue;
+    if (r != ARP_LANE_SHIFT && arp_drifted(a, r, v, nd) == arp_drifted(a, r, v, d)) continue;   /* clamped: no change */
+    ok[n++] = dir;
+  }
+  if (n == 0) return;
+  a->dev[i][r] = (int8_t)(d + ok[n == 2 ? (int)(mrnd(a) & 1u) : 0]);
+}
+
 /* One step of the grid at tick s. */
 static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   if (a->nheld == 0) {
@@ -280,15 +339,26 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   a->has_last = 1; a->last_ch = n->ch; a->last_note = n->note;
 
   /* each row reads its own step */
-  const int prob  = a->steps[a->count % (uint32_t)a->lane_len[ARP_LANE_PROB]].prob;
-  const int shift = a->steps[a->count % (uint32_t)a->lane_len[ARP_LANE_SHIFT]].shift;
-  const int velp  = a->steps[a->count % (uint32_t)a->lane_len[ARP_LANE_VEL]].vel;
-  const int gate  = a->steps[a->count % (uint32_t)a->lane_len[ARP_LANE_GATE]].gate;
+  int idx[ARP_NLANES];
+  for (int r = 0; r < ARP_NLANES; r++) idx[r] = (int)(a->count % (uint32_t)a->lane_len[r]);
+  if (chance(a, a->mut_steps)) {                          /* mutation: one row drifts, heard right away */
+    const int r = (int)(mrnd(a) % ARP_NLANES);
+    arp_mutate_step(a, idx[r], r);
+  }
+  const ArpStep* sp = &a->steps[idx[ARP_LANE_PROB]];
+  const ArpStep* ss = &a->steps[idx[ARP_LANE_SHIFT]];
+  const ArpStep* sv = &a->steps[idx[ARP_LANE_VEL]];
+  const ArpStep* sg = &a->steps[idx[ARP_LANE_GATE]];
+  const int prob  = arp_drifted(a, ARP_LANE_PROB, sp->prob, a->dev[idx[ARP_LANE_PROB]][ARP_LANE_PROB]);
+  const int velp  = arp_drifted(a, ARP_LANE_VEL, sv->vel, a->dev[idx[ARP_LANE_VEL]][ARP_LANE_VEL]);
+  const int gate  = arp_drifted(a, ARP_LANE_GATE, sg->gate, a->dev[idx[ARP_LANE_GATE]][ARP_LANE_GATE]);
+  const int sdev  = a->dev[idx[ARP_LANE_SHIFT]][ARP_LANE_SHIFT];
   a->count++;
   a->step_count = a->count;
 
   int play = prob >= 100 || (prob > 0 && (int)(rnd(a) % 100u) < prob);
-  int pitch = arp_shift_note(a, n->note, shift);
+  int pitch = arp_shift_note(a, n->note, ss->shift);
+  if (sdev) pitch = drift_pitch(a, pitch, sdev);
   if (pitch < 0 || pitch > 127) play = 0;
   if (!play) {
     if (a->sounding) note_off_at(a, s, emit, user);
