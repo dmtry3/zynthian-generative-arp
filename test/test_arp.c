@@ -291,8 +291,8 @@ static void test_gates(void) {
 
   Log l3 = {0}; arp_init(&a); chord(&a);
   arp_set_params(&a, ARP_RATE_16, 0, 99, 9);        /* out of range values are clamped */
-  printf("%s: parameters are clamped\n", a.gate_pct == 5 && a.order == ARP_RANDOM && a.octaves == 4 ? "PASS" : "FAIL");
-  if (!(a.gate_pct == 5 && a.order == ARP_RANDOM && a.octaves == 4)) failures++;
+  printf("%s: parameters are clamped\n", a.gate_pct == 5 && a.order == ARP_LOOP && a.octaves == 4 ? "PASS" : "FAIL");
+  if (!(a.gate_pct == 5 && a.order == ARP_LOOP && a.octaves == 4)) failures++;
   (void)l3;
 }
 
@@ -690,6 +690,92 @@ static void test_scale_in_pattern(void) {
   if (!(a.key == 11 && a.scale == ARP_SCALE_BLUES)) failures++;
 }
 
+/* ---------- Loop order and note mutation ---------- */
+
+static void loop_core(ArpCore* a, int len, int notes) {
+  arp_init(a); chord(a);
+  arp_set_params(a, ARP_RATE_16, 50, ARP_LOOP, 1);
+  arp_set_loop(a, notes, len);
+  static const uint16_t fixed[4] = { 0, 0x8000, 0xFFFF, 0x5555 };   /* chord of 3: 0, 1, 2, 0 */
+  for (int i = 0; i < ARP_MAX_STEPS; i++) a->loop[i] = fixed[i % 4];
+}
+
+static void test_loop_frozen(void) {
+  ArpCore a; int g[64], n;
+  loop_core(&a, 4, 0);
+  n = play(&a, 0, 240 * 8, g);
+  static const int e1[] = { 60, 64, 67, 60, 60, 64, 67, 60 };
+  expect("Loop len 4, Notes 0%: positions low/mid/high/low repeat", g, n, e1, 8);
+
+  loop_core(&a, 2, 0);
+  n = play(&a, 0, 240 * 6, g);
+  static const int e2[] = { 60, 64, 60, 64, 60, 64 };
+  expect("Loop len 2", g, n, e2, 6);
+
+  loop_core(&a, 4, 0);   /* new chord D-F-A-C: same shape on the new notes */
+  arp_note_off(&a, 0, 60); arp_note_off(&a, 0, 64); arp_note_off(&a, 0, 67);
+  arp_note_on(&a, 0, 62, 100); arp_note_on(&a, 0, 65, 100); arp_note_on(&a, 0, 69, 100); arp_note_on(&a, 0, 72, 100);
+  n = play(&a, 0, 240 * 4, g);
+  static const int e3[] = { 62, 69, 72, 65 };   /* 4 notes: 0, 2, 3, 1 */
+  expect("Loop keeps its shape on a new chord (4 notes)", g, n, e3, 4);
+
+  loop_core(&a, 4, 0);
+  arp_set_params(&a, ARP_RATE_16, 50, ARP_LOOP, 2);   /* 6 notes: 0, 3, 5, 1 */
+  n = play(&a, 0, 240 * 4, g);
+  static const int e4[] = { 60, 72, 79, 64 };
+  expect("Loop over 2 octaves", g, n, e4, 4);
+
+  loop_core(&a, 4, 0);
+  arp_reset_mutation(&a);
+  int changed = a.loop[0] != 0 || a.loop[1] != 0x8000 || a.loop[2] != 0xFFFF || a.loop[3] != 0x5555;
+  n = play(&a, 0, 240 * 12, g);
+  int rep = 1;
+  for (int i = 4; i < n; i++) if (g[i] != g[i - 4]) rep = 0;
+  printf("%s: reset makes a new loop, still repeating every 4 steps\n", changed && rep && n == 12 ? "PASS" : "FAIL");
+  failures += !(changed && rep && n == 12);
+}
+
+static void test_loop_mutation(void) {
+  ArpCore a; int g[512], n;
+  /* 100 %: a new position on every step, only chord notes */
+  loop_core(&a, 4, 100);
+  n = play(&a, 0, 240 * 200, g);
+  int ok = (n == 200), periodic = 1, hits[128] = {0};
+  for (int i = 0; i < n; i++) { if (g[i] != 60 && g[i] != 64 && g[i] != 67) ok = 0; else hits[g[i]]++; }
+  for (int i = 4; i < n; i++) if (g[i] != g[i - 4]) periodic = 0;
+  printf("%s: Notes 100%%: random chord notes, all used, not a 4-step loop\n",
+         ok && hits[60] && hits[64] && hits[67] && !periodic ? "PASS" : "FAIL");
+  failures += !(ok && hits[60] && hits[64] && hits[67] && !periodic);
+
+  /* 25 %: the loop drifts slowly: compare each pass of the loop with the previous one */
+  loop_core(&a, 8, 25);
+  arp_set_params(&a, ARP_RATE_16, 50, ARP_LOOP, 4);   /* 12 notes: changes are rarely invisible */
+  n = play(&a, 0, 240 * 400, g);
+  int diff = 0;
+  for (int i = 8; i < n; i++) diff += g[i] != g[i - 8];
+  double f = diff / (double)(n - 8);
+  printf("%s: Notes 25%%: about a quarter of the steps change per pass (%.2f)\n", f > 0.15 && f < 0.32 ? "PASS" : "FAIL", f);
+  failures += !(f > 0.15 && f < 0.32);
+
+  /* then back to 0 %: frozen in its current state */
+  arp_set_loop(&a, 0, 8);
+  n = play(&a, 240 * 400, 240 * 432, g);
+  int rep = n == 32;
+  for (int i = 8; i < n; i++) if (g[i] != g[i - 8]) rep = 0;
+  printf("%s: back to Notes 0%%: the grown loop is frozen\n", rep ? "PASS" : "FAIL");
+  failures += !rep;
+
+  /* the mutation generator doesn't change the other orders */
+  Log l1 = {0}, l2 = {0};
+  random_run(&l1, 42);
+  ArpCore b; arp_init(&b); chord(&b); arp_seed(&b, 42);
+  arp_set_params(&b, ARP_RATE_16, 50, ARP_RANDOM, 2);
+  arp_set_loop(&b, 100, 3); arp_seed_mutation(&b, 99); arp_reset_mutation(&b);
+  arp_process(&b, 0, 240 * 200, collect, &l2);
+  printf("%s: Random order is not affected by Loop settings\n", same_logs(&l1, &l2) ? "PASS" : "FAIL");
+  failures += !same_logs(&l1, &l2);
+}
+
 int main(void) {
   test_up_one_block();
   test_chunks();
@@ -721,6 +807,8 @@ int main(void) {
   test_lane_reset_and_change();
   test_scale_shift();
   test_scale_in_pattern();
+  test_loop_frozen();
+  test_loop_mutation();
   printf(failures ? "\n%d FAILED\n" : "\nALL PASSED\n", failures);
   return failures ? 1 : 0;
 }

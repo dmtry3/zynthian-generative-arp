@@ -14,11 +14,12 @@
 <urn:generativearp:arp#g_pattern> a pg:Group ; lv2:symbol "g_pattern" ; lv2:name "Pattern" ; lv2:index 1 ; lv2:displayPriority 50 .
 <urn:generativearp:arp#g_lengths> a pg:Group ; lv2:symbol "g_lengths" ; lv2:name "Lengths" ; lv2:index 2 ; lv2:displayPriority 40 .
 <urn:generativearp:arp#g_scale> a pg:Group ; lv2:symbol "g_scale" ; lv2:name "Scale" ; lv2:index 3 ; lv2:displayPriority 30 .
+<urn:generativearp:arp#g_mutate> a pg:Group ; lv2:symbol "g_mutate" ; lv2:name "Mutate" ; lv2:index 4 ; lv2:displayPriority 20 .
 
 <urn:generativearp:arp>
     a lv2:Plugin , lv2:UtilityPlugin ;
     doap:name "Generative Arp" ;
-    lv2:minorVersion 10 ;
+    lv2:minorVersion 11 ;
     lv2:microVersion 0 ;
     lv2:requiredFeature urid:map ;
     patch:writable
@@ -46,12 +47,12 @@
         atom:bufferType atom:Sequence ;
         atom:supports midi:MidiEvent , time:Position , patch:Message ;
         lv2:designation lv2:control ;
-        lv2:index 11 ; lv2:symbol "midi_in" ; lv2:name "MIDI In" ;
+        lv2:index 14 ; lv2:symbol "midi_in" ; lv2:name "MIDI In" ;
     ] , [
         a lv2:OutputPort , atom:AtomPort ;
         atom:bufferType atom:Sequence ;
         atom:supports midi:MidiEvent , patch:Message ;
-        lv2:index 12 ; lv2:symbol "midi_out" ; lv2:name "MIDI Out" ;
+        lv2:index 15 ; lv2:symbol "midi_out" ; lv2:name "MIDI Out" ;
     ] , [
         a lv2:InputPort , lv2:ControlPort ;
         lv2:index 0 ; lv2:symbol "rate" ; lv2:name "Rate" ;
@@ -69,11 +70,12 @@
     ] , [
         a lv2:InputPort , lv2:ControlPort ;
         lv2:index 2 ; lv2:symbol "order" ; lv2:name "Order" ;
-        lv2:default 0 ; lv2:minimum 0 ; lv2:maximum 5 ;
+        lv2:default 0 ; lv2:minimum 0 ; lv2:maximum 6 ;
         lv2:portProperty lv2:integer , lv2:enumeration ;
         lv2:scalePoint [ rdfs:label "Up" ; rdf:value 0 ] , [ rdfs:label "Down" ; rdf:value 1 ] ,
                        [ rdfs:label "Up-Down" ; rdf:value 2 ] , [ rdfs:label "Down-Up" ; rdf:value 3 ] ,
-                       [ rdfs:label "As played" ; rdf:value 4 ] , [ rdfs:label "Random" ; rdf:value 5 ] ;
+                       [ rdfs:label "As played" ; rdf:value 4 ] , [ rdfs:label "Random" ; rdf:value 5 ] ,
+                       [ rdfs:label "Loop" ; rdf:value 6 ] ;
         lv2:displayPriority 20 ; pg:group <urn:generativearp:arp#g_arp> ;
     ] , [
         a lv2:InputPort , lv2:ControlPort ;
@@ -124,8 +126,23 @@
                        [ rdfs:label "Mel minor" ; rdf:value 8 ] , [ rdfs:label "Major pent" ; rdf:value 9 ] , [ rdfs:label "Minor pent" ; rdf:value 10 ] , [ rdfs:label "Blues" ; rdf:value 11 ] ;
         lv2:displayPriority 30 ; pg:group <urn:generativearp:arp#g_scale> ;
     ] , [
+        a lv2:InputPort , lv2:ControlPort ;
+        lv2:index 11 ; lv2:symbol "mut_notes" ; lv2:name "Notes %" ;
+        lv2:default 0 ; lv2:minimum 0 ; lv2:maximum 100 ; lv2:portProperty lv2:integer ;
+        lv2:displayPriority 40 ; pg:group <urn:generativearp:arp#g_mutate> ;
+    ] , [
+        a lv2:InputPort , lv2:ControlPort ;
+        lv2:index 12 ; lv2:symbol "loop_len" ; lv2:name "Loop len" ;
+        lv2:default 8 ; lv2:minimum 1 ; lv2:maximum 16 ; lv2:portProperty lv2:integer ;
+        lv2:displayPriority 30 ; pg:group <urn:generativearp:arp#g_mutate> ;
+    ] , [
+        a lv2:InputPort , lv2:ControlPort ;
+        lv2:index 13 ; lv2:symbol "reset" ; lv2:name "Reset" ;
+        lv2:default 0 ; lv2:minimum 0 ; lv2:maximum 1 ; lv2:portProperty lv2:toggled ;
+        lv2:displayPriority 10 ; pg:group <urn:generativearp:arp#g_mutate> ;
+    ] , [
         a lv2:OutputPort , lv2:ControlPort ;
-        lv2:index 13 ; lv2:symbol "step_count" ; lv2:name "Step count" ;
+        lv2:index 16 ; lv2:symbol "step_count" ; lv2:name "Step count" ;
         lv2:default 0 ; lv2:minimum 0 ; lv2:maximum 16777215 ; lv2:portProperty lv2:integer ;
     ] .
 

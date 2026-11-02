@@ -20,7 +20,8 @@ enum { ARP_SCALE_CHROMATIC, ARP_SCALE_MAJOR, ARP_SCALE_MINOR, ARP_SCALE_DORIAN, 
        ARP_SCALE_MAJ_PENT, ARP_SCALE_MIN_PENT, ARP_SCALE_BLUES, ARP_NSCALES };
 
 enum { ARP_RATE_4, ARP_RATE_8, ARP_RATE_8T, ARP_RATE_16, ARP_RATE_16T, ARP_RATE_32, ARP_NRATES };
-enum { ARP_UP, ARP_DOWN, ARP_UPDOWN, ARP_DOWNUP, ARP_PLAYED, ARP_RANDOM, ARP_NORDERS };
+/* ARP_LOOP: a loop of random positions in the chord (Turing Machine style), see arp_set_loop(). */
+enum { ARP_UP, ARP_DOWN, ARP_UPDOWN, ARP_DOWNUP, ARP_PLAYED, ARP_RANDOM, ARP_LOOP, ARP_NORDERS };
 
 /* Called for every outgoing MIDI event; tick is inside the range passed to arp_process(). */
 typedef void (*arp_emit_fn)(void* user, double tick, uint8_t st, uint8_t d1, uint8_t d2);
@@ -59,6 +60,12 @@ typedef struct {
   uint32_t step_count;          /* number of the last step (1-based) for display; 0 when idle */
   uint32_t rng;
 
+  /* mutation (own random generator, so the other orders don't depend on it) */
+  uint16_t loop[ARP_MAX_STEPS]; /* Loop order: relative position in the chord, 0 = lowest note */
+  int loop_len;                 /* 1..16 */
+  int mut_notes;                /* 0..100 %: chance that the loop step gets a new random position */
+  uint32_t mrng;
+
   int sounding;                 /* a generated note is on */
   int tied;                     /* the sounding note is tied into the next step */
   uint8_t on_ch, on_note;
@@ -73,6 +80,11 @@ void arp_seed(ArpCore* a, uint32_t seed);
 void arp_set_lane_length(ArpCore* a, int lane, int length);
 void arp_set_length(ArpCore* a, int length);
 void arp_set_step(ArpCore* a, int i, int prob, int shift, int vel, int gate);
+/* Loop order: length 1..16 and mutation 0..100 % (0 = the loop is frozen). */
+void arp_set_loop(ArpCore* a, int notes_pct, int loop_len);
+/* Seed of the mutation generator; arp_reset_mutation() makes a new random loop. */
+void arp_seed_mutation(ArpCore* a, uint32_t seed);
+void arp_reset_mutation(ArpCore* a);
 /* Key 0..11 (C..B) and scale for Shift. */
 void arp_set_scale(ArpCore* a, int key, int scale);
 /* note + n semitones, pulled into the scale (n != 0); may return a value outside 0..127. */

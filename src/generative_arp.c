@@ -13,15 +13,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "arp_core.h"
 
 #define ARP_URI "urn:generativearp:arp"
 #define JUMP_TICKS 4.0   /* position difference treated as a relocation */
 
-/* Control input ports come first (0..5): Zynthian numbers LV2 parameters from len(control ports)+1,
+/* Control input ports come first (0..P_END-1): Zynthian numbers LV2 parameters from len(control ports)+1,
  * so a control port with a higher index would be overwritten by a parameter in its list. */
 enum { P_RATE = 0, P_GATE, P_ORDER, P_OCTAVES, P_LATCH,
        P_LEN0, P_KEY = P_LEN0 + ARP_NLANES, P_SCALE,     /* row lengths: prob, shift, vel, gate */
+       P_MUT_NOTES, P_LOOP_LEN, P_RESET,                  /* mutation; any change of reset = reset */
        P_END, P_MIDI_IN = P_END, P_MIDI_OUT, P_STEP_COUNT };   /* step_count: output, for the widget */
 
 /* Pattern step values are LV2 parameters (patch:Set on midi_in), not ports: Zynthian's jalv does not
@@ -49,6 +51,7 @@ typedef struct {
 
   double sr, clk, bpm;   /* clk: current position in ticks */
   int bpb, rolling;
+  int reset_prev;        /* last value of the reset port, -1 before the first run */
   ArpCore core;
 } Arp;
 
@@ -177,6 +180,9 @@ static LV2_Handle instantiate(const LV2_Descriptor* d, double rate, const char* 
   A->sr = rate; A->bpm = 120.0; A->bpb = 4;
   arp_init(&A->core);
   arp_seed(&A->core, (uint32_t)(uintptr_t)A ^ 0xA5A5A5A5u);
+  arp_seed_mutation(&A->core, (uint32_t)time(NULL) ^ ((uint32_t)(uintptr_t)A * 2654435761u));
+  arp_reset_mutation(&A->core);   /* a different loop after every start */
+  A->reset_prev = -1;
   return A;
 }
 
@@ -207,6 +213,10 @@ static void run(LV2_Handle h, uint32_t n) {
   arp_set_latch(&A->core, ctl_int(A, P_LATCH, 0) != 0);
   for (int r = 0; r < ARP_NLANES; r++) arp_set_lane_length(&A->core, r, ctl_int(A, P_LEN0 + r, ARP_MAX_STEPS));
   arp_set_scale(&A->core, ctl_int(A, P_KEY, 0), ctl_int(A, P_SCALE, ARP_SCALE_CHROMATIC));
+  arp_set_loop(&A->core, ctl_int(A, P_MUT_NOTES, 0), ctl_int(A, P_LOOP_LEN, 8));
+  const int rs = ctl_int(A, P_RESET, 0) != 0;
+  if (A->reset_prev >= 0 && rs != A->reset_prev) arp_reset_mutation(&A->core);
+  A->reset_prev = rs;
 
   LV2_ATOM_SEQUENCE_FOREACH(A->in, ev) {
     uint32_t f = (uint32_t)ev->time.frames;

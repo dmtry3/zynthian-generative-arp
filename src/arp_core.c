@@ -33,6 +33,9 @@ void arp_init(ArpCore* a) {
   arp_set_length(a, ARP_MAX_STEPS);
   arp_set_scale(a, 0, ARP_SCALE_CHROMATIC);
   for (int i = 0; i < ARP_MAX_STEPS; i++) arp_set_step(a, i, 100, 0, 100, ARP_GATE_GLOBAL);
+  arp_set_loop(a, 0, 8);
+  arp_seed_mutation(a, 0);
+  arp_reset_mutation(a);
 }
 
 void arp_set_scale(ArpCore* a, int key, int scale) {
@@ -85,11 +88,26 @@ void arp_set_params(ArpCore* a, int rate, int gate_pct, int order, int octaves) 
 
 void arp_seed(ArpCore* a, uint32_t seed) { a->rng = seed ? seed : 0x9E3779B9u; }
 
-static uint32_t rnd(ArpCore* a) {   /* xorshift32 */
-  uint32_t x = a->rng;
+static uint32_t xorshift(uint32_t* s) {
+  uint32_t x = *s;
   x ^= x << 13; x ^= x >> 17; x ^= x << 5;
-  return a->rng = x;
+  return *s = x;
 }
+static uint32_t rnd(ArpCore* a) { return xorshift(&a->rng); }
+static uint32_t mrnd(ArpCore* a) { return xorshift(&a->mrng); }
+
+void arp_set_loop(ArpCore* a, int notes_pct, int loop_len) {
+  a->mut_notes = clampi(notes_pct, 0, 100);
+  a->loop_len = clampi(loop_len, 1, ARP_MAX_STEPS);
+}
+
+void arp_seed_mutation(ArpCore* a, uint32_t seed) { a->mrng = seed ? seed : 0x2545F491u; }
+
+void arp_reset_mutation(ArpCore* a) {
+  for (int i = 0; i < ARP_MAX_STEPS; i++) a->loop[i] = (uint16_t)(mrnd(a) >> 16);
+}
+
+static int chance(ArpCore* a, int pct) { return pct >= 100 || (pct > 0 && (int)(mrnd(a) % 100u) < pct); }
 
 static int key_less(uint8_t n1, uint8_t c1, uint8_t n2, uint8_t c2) {
   return n1 != n2 ? n1 < n2 : c1 < c2;
@@ -226,6 +244,11 @@ static int pick(ArpCore* a, const ArpNote* p, int m) {
     if (k < 0 || m < 2) return (int)(rnd(a) % (uint32_t)m);
     i = (int)(rnd(a) % (uint32_t)(m - 1));
     return i >= k ? i + 1 : i;
+  }
+  case ARP_LOOP: {   /* the loop step may mutate when it is read, then maps onto the chord */
+    const uint32_t pos = a->count % (uint32_t)a->loop_len;
+    if (chance(a, a->mut_notes)) a->loop[pos] = (uint16_t)(mrnd(a) >> 16);
+    return (int)(((uint32_t)a->loop[pos] * (uint32_t)m) >> 16);
   }
   default:   /* ARP_UP */
     i = a->has_last ? above(a, p, m) : -1;
