@@ -1,2 +1,177 @@
-# zynthian-generative-arp
-Generative arpeggiator LV2 MIDI plugin for Zynthian.
+# Generative Arp for Zynthian
+
+**English** · [Русский](README.ru.md)
+
+An LV2 MIDI plugin that turns into a generative arpeggiator for [Zynthian](https://zynthian.org)
+(tested on Zynthian *Vangelis* on a Raspberry Pi 5). It has a step pattern with probability, pitch shift,
+velocity and gate per step, each row with its own length (polyrhythm), scales, a Turing‑Machine‑style
+note loop, slow mutation of the pattern, and a touchscreen widget for editing the steps.
+
+## Install
+
+On the Zynthian (it builds on the device):
+
+```bash
+git clone https://github.com/dmtry3/zynthian-generative-arp.git
+cd zynthian-generative-arp
+sudo ./scripts/install.sh
+sudo systemctl restart zynthian
+```
+
+`install.sh` builds the plugin and creates two symlinks:
+- `/usr/local/lib/lv2/generative_arp.lv2` → `build/generative_arp.lv2`;
+- the widget into `/zynthian/zynthian-ui/zyngui/widgets_user/`.
+
+It also refreshes Zynthian's preset list for this plugin. Nothing else in Zynthian is changed.
+Remove it with `sudo ./scripts/uninstall.sh`, which only deletes the links.
+
+Update:
+
+```bash
+git pull && sudo ./scripts/install.sh && sudo systemctl restart zynthian
+```
+
+In Zynthian, add **Generative Arp** to a chain as a MIDI tool in front of a synth. Zynthian shows it in
+the *Other* category: the category can't be set from the plugin, but you can change it in webconf → Engines.
+
+## How it plays
+
+Hold a chord and the arpeggiator plays its notes one per step.
+
+**Transport.**
+- **Stopped:** the arp runs on its own clock at the Zynthian tempo, and the first note sounds as
+  soon as you press a key.
+- **Playing:** steps are locked to the song grid. A new chord comes in on the next step of the grid.
+  Starting the transport or jumping to another position silences the sounding note.
+
+**Note order** follows the last played pitch. If you add a note to the chord, Up continues upward from
+where it was rather than starting over.
+
+**Other MIDI.** Notes are played on the channel of the key that produced them. Other MIDI (CC, pitch
+bend…) passes through. All Notes Off / All Sound Off (CC 123 / 120) also clears the held and latched notes.
+
+## Controls
+
+The controllers are grouped into pages of four:
+
+| Page | Control | Values | What it does |
+|---|---|---|---|
+| Arp | Rate | 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32 | step length |
+| | Gate % | 5–100 | note length as a share of the step, unless a step sets its own |
+| | Order | Up, Down, Up‑Down, Down‑Up, As played, Random, Loop | order of the chord notes (see below) |
+| | Octaves | 1–4 | the chord repeated over this many octaves |
+| Pattern | Latch | on/off | the chord keeps playing after the keys are released |
+| | Transpose | −2 … +2 octaves | added to every note at the very end |
+| Lengths | Prob len, Shift len, Vel len, Gate len | 1–16 | length of each pattern row (polyrhythm) |
+| Scale | Key | C … B | tonic |
+| | Scale | Chromatic, Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, Harm minor, Mel minor, Major pent, Minor pent, Blues | scale for Shift |
+| Mutate | Notes % | 0–100 | Loop order only: chance that a loop step gets a new note |
+| | Loop len | 1–16 | Loop order only: length of the note loop |
+| | Steps % | 0–100 | any order: chance that a step of the pattern drifts |
+| | Reset | toggle | any change: clear the drift, and make a new note loop |
+
+### Order
+
+- **Up / Down:** low to high, or high to low, and then repeat.
+- **Up‑Down / Down‑Up:** up and down without repeating the top and bottom notes.
+- **As played:** in the order the keys were pressed, octave by octave.
+- **Random:** a random chord note, never the same one twice in a row.
+- **Loop:** in the style of the Turing Machine. The loop has *Loop len* steps and stores positions in the
+  chord (lowest, middle, highest…), not notes. A new chord keeps the shape of the loop with the new notes.
+  - *Notes %* is the chance that a step gets a new random position when it plays: at 0 % the loop is
+    frozen, at 100 % every note is new.
+  - The loop survives releasing the keys and changing chords, and is new after each Zynthian start or *Reset*.
+
+### Latch
+
+- **On:** released keys keep playing. A new chord, pressed after all keys were released, replaces the old one.
+- **Off:** only the keys still held keep playing.
+
+The control can be mapped to a button on a MIDI controller (Zynthian's MIDI learn; use the momentary
+switch option in the binding settings if you want it to act only while held).
+
+## The pattern (widget)
+
+The plugin's screen in Zynthian shows a touch editor for the 16 steps of the pattern.
+
+- **Tabs Prob · Shift · Vel · Gate** choose the row. Each tab shows the length of its row.
+- **Touch or drag a bar** to set the step's value by height. A fast swipe fills the steps in between.
+- **Double tap a bar** to reset that step to its default.
+- **Tap a step number** under the bars to set the length of the current row.
+- **Playhead:** the step playing now is highlighted in each row (rows have their own lengths).
+- **Mutation marks:** a white mark on a bar shows the value the step plays now after mutation. The bar
+  keeps the drawn value.
+
+| Row | Values | Default | Meaning |
+|---|---|---|---|
+| Prob | 0–100 % | 100 | chance that the step plays |
+| Shift | −24 … +24 semitones | 0 | added to the chosen chord note |
+| Vel | 0–200 % | 100 | of the key velocity (result 1–127) |
+| Gate | Global, 5–100 %, Tie | Global | note length; Global uses the Gate % control |
+
+**Tie.** The note holds until the next step.
+- If the next note is the same pitch, it just continues (several Ties make one long note).
+- If the next note is different, it starts before the previous one stops (legato), which mono synths
+  with legato or portamento play as one phrase.
+- A Tie ends on a silent step or when the keys are released.
+
+**Polyrhythm.** Every row runs on its own length over the same step counter, e.g. notes every 3 steps
+and accents every 4 meet again after 12. The counter starts at the first key after all keys were
+released. *Loop len* is a fifth such length, for the Loop order.
+
+## Scales
+
+With a scale selected, Shift stays in semitones but sticks to the scale:
+- **In the widget,** Shift only takes the scale's intervals from the tonic. In A minor that is
+  0, 2, 3, 5, 7, 8, 10, 12 and the same downwards. The Shift tab shows the scale.
+- **In the plugin,** a shifted note that falls outside the scale (the chord note may be any note)
+  moves to the nearest scale note. A tie goes in the direction of the shift.
+- **Shift 0** leaves the played note as it is, even if it isn't in the scale.
+- **Changing the scale** moves the Shift steps into the new scale in the widget. Between 7‑note scales
+  the degree is kept (minor +3 → major +4); otherwise the nearest allowed value is used.
+
+## Mutation
+
+**Steps %** works with any order. When a step plays, with this chance one of its rows moves by one
+notch, and you hear it right away:
+
+| Row | One notch | Furthest from the drawn value |
+|---|---|---|
+| Prob | 20 % | 3 notches |
+| Shift | the next scale note (a semitone in Chromatic) | 3 notches |
+| Vel | 20 % | 3 notches |
+| Gate | 5 % (Global counts from Gate %; Tie can't go higher) | 4 notches |
+
+- At the limit a step can only move back, so the pattern "breathes" and stays recognizable.
+- **0 %** freezes the pattern as it has grown.
+- **Reset** brings everything back to the drawn pattern.
+- **Touching a step** in the widget clears the drift of that row of that step.
+- The drawn pattern itself is never changed.
+
+## Presets
+
+Presets use the standard Zynthian preset list and *Save preset*. A preset stores all controls and the
+whole pattern. The factory bank **Factory** has:
+
+- **Init:** everything at defaults.
+- **Accent Bass:** accents, skipped steps, ties and octave jumps.
+- **Polyrhythm 7‑3‑4‑5:** row lengths 7/3/4/5, Up‑Down over 2 octaves.
+- **Turing A minor:** Loop order in A minor with slow note mutation.
+- **Breathing C major:** a pattern in C major with step mutation.
+
+Snapshots work too: Zynthian saves the controls and the pattern.
+
+What is not saved: the grown mutation (step drift and the note loop). It lives only while the plugin runs.
+
+## Build and test without a Zynthian
+
+Needs `gcc`, `pkg-config`, `lv2-dev` (and `python3-tk` for the widget preview).
+
+```bash
+./scripts/build.sh               # build/generative_arp.lv2
+./scripts/test.sh                # tests of the arpeggiator logic (src/arp_core.c, no LV2)
+python3 test/widget_preview.py   # widget touch scenarios; --show opens a window
+python3 scripts/gen_presets.py   # regenerate lv2/presets.ttl and lv2/manifest.ttl
+```
+
+Logs on the device: `journalctl -u zynthian`.
