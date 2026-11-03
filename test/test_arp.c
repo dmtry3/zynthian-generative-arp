@@ -685,9 +685,12 @@ static void test_scale_in_pattern(void) {
   static const int e3[] = { 60, 64, 79, 55, 64, 67, 72, 59 };
   check_seq("Chromatic (default) keeps semitone shifts", &l3, e3, 8);
 
-  arp_set_scale(&a, 15, 99);
-  printf("%s: key and scale are clamped\n", a.key == 11 && a.scale == ARP_SCALE_BLUES ? "PASS" : "FAIL");
-  if (!(a.key == 11 && a.scale == ARP_SCALE_BLUES)) failures++;
+  arp_set_scale(&a, -3, 99);
+  printf("%s: key and scale are clamped\n", a.key == 0 && a.scale == ARP_SCALE_BLUES && !a.key_auto ? "PASS" : "FAIL");
+  if (!(a.key == 0 && a.scale == ARP_SCALE_BLUES && !a.key_auto)) failures++;
+  arp_set_scale(&a, 15, 0);
+  printf("%s: key 12 and above is Auto\n", a.key_auto ? "PASS" : "FAIL");
+  failures += !a.key_auto;
 }
 
 /* ---------- Loop order and note mutation ---------- */
@@ -1235,6 +1238,141 @@ static void test_groove(void) {
   }
 }
 
+/* ---------- passing notes, key auto ---------- */
+
+static int in_set(int v, const int* set, int n) { for (int i = 0; i < n; i++) if (set[i] == v) return 1; return 0; }
+
+/* every new chord note gets a passing note: pairs (passing, target); checks passing is in the allowed set
+ * for its target, returns which allowed entries were seen (bit mask) */
+static int check_pairs(const char* name, ArpCore* a, int npairs, const int targets[3], const int allowed[3][4], int nallowed) {
+  int g[512], n = play(a, 0, 240.0 * 2 * npairs, g), ok = n == 2 * npairs, seen = 0;
+  for (int i = 0; ok && i < npairs; i++) {
+    const int t = targets[i % 3], p = g[2 * i];
+    if (g[2 * i + 1] != t) { ok = 0; break; }
+    int k = -1;
+    for (int j = 0; j < nallowed; j++) if (allowed[i % 3][j] == p) k = j;
+    if (k < 0) ok = 0; else seen |= 1 << k;
+  }
+  ok = ok && seen == (1 << nallowed) - 1;
+  printf("%s: %s\n", ok ? "PASS" : "FAIL", name);
+  if (!ok) { printf("  got:"); for (int i = 0; i < n && i < 24; i++) printf(" %d", g[i]); printf("\n"); failures++; }
+  return seen;
+}
+
+static void test_passing(void) {
+  ArpCore a; int g[128], n;
+  static const int tg[3] = { 60, 64, 67 };
+
+  arp_init(&a); chord(&a); arp_set_scale(&a, 0, ARP_SCALE_MAJOR);
+  arp_set_passing(&a, 100, ARP_PASS_APPROACH);
+  n = play(&a, 0, 240 * 8, g);
+  static const int e1[] = { 59, 60, 63, 64, 66, 67, 59, 60 };
+  expect("Approach 100 %: a semitone below, then the chord note", g, n, e1, 8);
+
+  arp_init(&a); chord(&a); arp_set_scale(&a, 0, ARP_SCALE_MAJOR); arp_seed_mutation(&a, 5);
+  arp_set_passing(&a, 100, ARP_PASS_NEIGHBOR);
+  static const int nb[3][4] = { { 62, 59 }, { 65, 62 }, { 69, 65 } };
+  check_pairs("Neighbor, C major: next scale note up or down, then resolves", &a, 60, tg, nb, 2);
+
+  arp_init(&a); chord(&a); arp_set_scale(&a, 0, ARP_SCALE_MAJOR); arp_seed_mutation(&a, 6);
+  arp_set_passing(&a, 100, ARP_PASS_LEAP);
+  static const int lp[3][4] = { { 64, 65, 57, 55 }, { 67, 69, 60, 59 }, { 71, 72, 64, 62 } };
+  check_pairs("Leap, C major: 2 or 3 scale notes up or down", &a, 90, tg, lp, 4);
+
+  arp_init(&a); chord(&a); arp_seed_mutation(&a, 7);
+  arp_set_passing(&a, 100, ARP_PASS_NEIGHBOR);
+  static const int nc[3][4] = { { 61, 59 }, { 65, 63 }, { 68, 66 } };
+  check_pairs("Neighbor, Chromatic: a semitone", &a, 60, tg, nc, 2);
+
+  arp_init(&a); chord(&a); arp_set_scale(&a, 0, ARP_SCALE_MAJOR); arp_seed_mutation(&a, 8);
+  arp_set_passing(&a, 100, ARP_PASS_MIXED);
+  static const int mx[3][4] = { { 62, 59, 64, 65 }, { 65, 62, 67, 69 }, { 69, 65, 71, 72 } };
+  int seen = 0;
+  {
+    int gg[512]; n = play(&a, 0, 240.0 * 2 * 120, gg);
+    int ok = n == 240;
+    for (int i = 0; ok && i < 120; i++) {
+      const int t = tg[i % 3], p = gg[2 * i];
+      if (gg[2 * i + 1] != t) ok = 0;
+      if (p == t - 1) seen |= 1;                                   /* approach */
+      else if (in_set(p, mx[i % 3], 2)) seen |= 2;                 /* neighbour */
+      else if (in_set(p, mx[i % 3] + 2, 2) || p == t - 7 || p == t - 5 || p == t - 3 || p == t - 4 ||
+               p == t - 8 || p == t - 9) seen |= 4;                /* leap (up or down) */
+      else ok = 0;
+    }
+    ok = ok && seen == 7;
+    printf("%s: Mixed: approach, neighbour and leap all occur\n", ok ? "PASS" : "FAIL");
+    failures += !ok;
+  }
+
+  /* 50 %: some new notes get one, never on the resolution step */
+  arp_init(&a); chord(&a); arp_set_scale(&a, 0, ARP_SCALE_MAJOR); arp_seed_mutation(&a, 9);
+  arp_set_passing(&a, 50, ARP_PASS_APPROACH);
+  {
+    int gg[512]; n = play(&a, 0, 240.0 * 200, gg);
+    int ok = n == 200, np = 0, idx = 0;   /* walk the chord C E G in order, a passing note may precede each */
+    for (int i = 0; ok && i < n; i++) {
+      const int t = tg[idx % 3];
+      if (gg[i] == t) idx++;
+      else if (gg[i] == t - 1 && i + 1 < n && gg[i + 1] == t) np++;
+      else if (!(gg[i] == t - 1 && i + 1 == n)) ok = 0;
+    }
+    ok = ok && np > 20 && np < 100;
+    printf("%s: Passing 50 %%: %d passing notes, order intact\n", ok ? "PASS" : "FAIL", np);
+    failures += !ok;
+  }
+
+  /* with repeats: the passing note comes before the whole run */
+  arp_init(&a); chord(&a); arp_set_scale(&a, 0, ARP_SCALE_MAJOR);
+  arp_set_passing(&a, 100, ARP_PASS_APPROACH);
+  arp_set_repeats(&a, 3, ARP_RPT_RUN_UP);
+  n = play(&a, 0, 240 * 8, g);
+  static const int e2[] = { 59, 60, 62, 64, 63, 64, 65, 67 };
+  expect("Approach + Repeats 3 Run up: B | C D E | D# | E F G", g, n, e2, 8);
+  arp_set_repeats(&a, 1, ARP_RPT_SAME);   /* called every run(): must not cut the resolution */
+  n = play(&a, 240 * 8, 240 * 12, g);
+  static const int e2b[] = { 66, 67, 59, 60 };   /* F# before G, its resolution G (run cut to 1), then B C */
+  expect("Repeats lowered: the run is cut, passing + resolution stay", g, n, e2b, 4);
+
+  /* Loop order: one loop position per chord note */
+  loop_core(&a, 4, 0);
+  arp_set_passing(&a, 100, ARP_PASS_APPROACH);
+  n = play(&a, 0, 240 * 8, g);
+  static const int e3[] = { 59, 60, 63, 64, 66, 67, 59, 60 };
+  expect("Loop with passing notes: positions not skipped", g, n, e3, 8);
+
+  /* the target is released before it resolves: the order moves on */
+  arp_init(&a); chord(&a);
+  arp_set_passing(&a, 100, ARP_PASS_APPROACH);
+  n = play(&a, 0, 240, g);
+  arp_note_off(&a, 0, 60);
+  n = play(&a, 240, 240 * 2, g);
+  static const int e4[] = { 63 };
+  expect("released target: next note's passing note", g, n, e4, 1);
+
+  /* passing with shift: from the chord note, then shifted */
+  arp_init(&a); arp_note_on(&a, 0, 60, 100);
+  arp_set_length(&a, 1); arp_set_step(&a, 0, 100, 12, 100, ARP_GATE_GLOBAL);
+  arp_set_passing(&a, 100, ARP_PASS_APPROACH);
+  n = play(&a, 0, 240 * 2, g);
+  static const int e5[] = { 71, 72 };
+  expect("passing note goes through Shift like the chord note", g, n, e5, 2);
+
+  /* Key Auto: follows the lowest held key */
+  arp_init(&a); arp_note_on(&a, 0, 65, 100);
+  arp_set_length(&a, 1); arp_set_step(&a, 0, 100, 6, 100, ARP_GATE_GLOBAL);
+  arp_set_scale(&a, 0, ARP_SCALE_MAJOR);
+  n = play(&a, 0, 240, g);
+  arp_set_scale(&a, ARP_KEY_AUTO, ARP_SCALE_MAJOR);
+  n += play(&a, 240, 480, g + 1);
+  static const int e6[] = { 71, 72 };   /* F +6: B in C major, but B -> C in F major */
+  expect("Key Auto: F alone -> F major", g, n, e6, 2);
+  arp_note_off(&a, 0, 65); arp_note_on(&a, 0, 62, 100); arp_note_on(&a, 0, 69, 100);
+  play(&a, 480, 720, g);
+  printf("%s: Key Auto follows a new chord (D-A -> D)\n", a.key == 2 ? "PASS" : "FAIL");
+  failures += a.key != 2;
+}
+
 int main(void) {
   test_up_one_block();
   test_chunks();
@@ -1273,6 +1411,7 @@ int main(void) {
   test_transpose();
   test_repeats();
   test_groove();
+  test_passing();
   printf(failures ? "\n%d FAILED\n" : "\nALL PASSED\n", failures);
   return failures ? 1 : 0;
 }

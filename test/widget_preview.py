@@ -93,7 +93,7 @@ class Processor:
         self.engine = Engine()
         self.id = 1
         self.controllers_dict = {k: Ctrl(k, 16, 1, 16) for k in ("len_prob", "len_shift", "len_vel", "len_gate")}
-        self.controllers_dict["key"] = Ctrl("key", 0, 0, 11)
+        self.controllers_dict["key"] = Ctrl("key", 0, 0, 12)
         self.controllers_dict["scale"] = Ctrl("scale", 0, 0, 11)
         self.controllers_dict["gate"] = Ctrl("gate", 50, 5, 100)
         for i in range(1, 17):
@@ -255,6 +255,9 @@ def main():
     check("Shift tab, Chromatic: no scale label", not any("minor" in t or "major" in t or "semitones" in t for t in texts()))
     proc.controllers_dict["key"].value = 9; proc.controllers_dict["scale"].value = 2; wdg.update()
     check("Shift tab, A minor: 'A minor'", "A minor" in texts())
+    proc.controllers_dict["key"].value = 12; wdg.update()
+    check("Shift tab, Key Auto: 'Auto minor'", "Auto minor" in texts())
+    proc.controllers_dict["key"].value = 9; wdg.update()
     # with a scale, Shift values stick to the scale intervals (minor: 0 2 3 5 7 8 10 12 ...)
     ys = lambda v: y1 - (v + 24) / 48.0 * (y1 - y0)
     got = []

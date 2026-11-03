@@ -68,8 +68,10 @@ git pull && sudo ./scripts/install.sh && sudo systemctl restart zynthian
 | | Repeats | 1–5, Rnd 3, Rnd 5 | сколько шагов играет каждая нота аккорда |
 | | Rpt mode | Same, Run up, Run down, Octave, Echo | что делают повторы |
 | Lengths | Prob len, Shift len, Vel len, Gate len | 1–16 | длина каждого ряда паттерна (полиритмия) |
-| Scale | Key | C … B | тоника |
-| | Scale | Chromatic, Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, Harm minor, Mel minor, Major pent, Minor pent, Blues | гамма для Shift |
+| Scale | Key | C … B, Auto | тоника (Auto — нижняя зажатая клавиша) |
+| | Scale | Chromatic, Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, Harm minor, Mel minor, Major pent, Minor pent, Blues | гамма для Shift, Run, дрейфа и проходящих |
+| | Passing % | 0–100 | шанс проходящей ноты перед новой нотой аккорда |
+| | Pass style | Neighbor, Leap, Approach, Mixed | какая проходящая |
 | Mutate | Notes % | 0–100 | только Order = Loop: шанс, что шаг петли получит новую ноту |
 | | Loop len | 1–16 | только Order = Loop: длина петли нот |
 | | Steps % | 0–100 | в любом Order: шанс, что шаг паттерна сдвинется |
@@ -175,6 +177,19 @@ Latch удобно повесить на кнопку MIDI-контроллер�
 - **Shift 0** оставляет сыгранную ноту как есть, даже если её нет в гамме.
 - **При смене гаммы** виджет переносит шаги Shift в новую гамму. Между семиступенными гаммами
   сохраняется ступень (minor +3 → major +4), в остальных случаях берётся ближайшее разрешённое значение.
+- **Key: Auto** берёт тонику из нижней зажатой клавиши, так что лад едет за басом: Dorian от D на аккорде Dm,
+  от E на Em. На вкладке Shift виджета тогда написано «Auto».
+
+### Проходящие ноты
+
+Когда порядок переходит к новой ноте аккорда, с шансом *Passing %* один шаг сначала играет проходящую,
+а следующий разрешается в ноту аккорда (порядок ждёт, как при повторе):
+- **Neighbor:** соседняя ступень гаммы вверх или вниз. **Leap:** на 2–3 ступени вверх или вниз.
+  **Approach:** полутон снизу (единственная нота вне гаммы, и она сразу разрешается). **Mixed:** любая из них.
+- В C major, аккорд C‑E‑G, Up, Approach: `B C  D# E  F# G`.
+- С *Repeats* проходящая встаёт перед всей серией. Она проходит через Shift, дрейф и Transpose как нота
+  аккорда, так что при одинаковом Shift на двух шагах разрешение точное.
+- С Chromatic ступень — полутон. Случайный выбор берётся из генератора мутации.
 
 ## Мутация
 

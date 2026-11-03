@@ -36,6 +36,9 @@ enum { ARP_UP, ARP_DOWN, ARP_UPDOWN, ARP_DOWNUP, ARP_PLAYED, ARP_RANDOM, ARP_LOO
 enum { ARP_RPT_SAME, ARP_RPT_RUN_UP, ARP_RPT_RUN_DOWN, ARP_RPT_OCT, ARP_RPT_ECHO, ARP_NRPT_MODES };
 #define ARP_ECHO_PCT 70
 /* Groove: step delay pattern (share of the swing delay, in sixths) by grid position; delays are late only. */
+/* Passing notes: a step before a new chord note plays a neighbour and resolves into the note. */
+enum { ARP_PASS_NEIGHBOR, ARP_PASS_LEAP, ARP_PASS_APPROACH, ARP_PASS_MIXED, ARP_NPASS };
+#define ARP_KEY_AUTO 12       /* key = lowest held note */
 enum { ARP_FEEL_PAIRS, ARP_FEEL_FOURS, ARP_FEEL_DRAG, ARP_FEEL_THREES, ARP_NFEELS };
 
 /* Called for every outgoing MIDI event; tick is inside the range passed to arp_process(). */
@@ -65,6 +68,8 @@ typedef struct {
   ArpStep steps[ARP_MAX_STEPS];
   int lane_len[ARP_NLANES];     /* length of each row 1..16 */
   int key, scale;               /* key 0..11 (C..B), scale ARP_SCALE_* */
+  int key_auto;                 /* Key = Auto: key follows the lowest held note */
+  int passing, pass_style;      /* 0..100 % chance of a passing note before a new chord note, ARP_PASS_* */
   int transpose;                /* -2..+2 octaves, added to every generated note */
   int rpt, rpt_mode;            /* repeats 1..5 or ARP_RPT_RND*, ARP_RPT_* mode */
   int swing, feel, drunk, accent; /* swing 50..75 %, ARP_FEEL_*, drunk 0..100 %, accent 0..100 % (velocity and gate) */
@@ -75,7 +80,9 @@ typedef struct {
   int dir;                      /* +1 / -1 for Up-Down and Down-Up */
   uint32_t played_idx;          /* As played position */
   uint32_t loop_pos;            /* Loop order position (advances once per chord note, not per repeat) */
-  int rpt_left, rpt_k;          /* repeats still to play of the current note, number of the current repeat */
+  int rpt_left, rpt_k;          /* steps still to play of the current note, number of the current repeat
+                                 * (-1: the passing note before it) */
+  int pass_iv, pass_approach;   /* passing note: scale steps from the chord note, or a semitone below */
   ArpNote rpt_note;             /* the chord note being repeated */
 
   /* groove timing: grid step s plays at s + offset */
@@ -131,7 +138,9 @@ void arp_set_repeats(ArpCore* a, int rpt, int mode);
 void arp_set_groove(ArpCore* a, int swing, int feel, int drunk, int accent);
 /* Delay of grid step s in ticks (computed once per step: Drunk advances), see arp_set_groove(). */
 double arp_step_offset(ArpCore* a, double s);
-/* Key 0..11 (C..B) and scale for Shift. */
+/* Passing notes: chance 0..100 % and style ARP_PASS_*. */
+void arp_set_passing(ArpCore* a, int pct, int style);
+/* Key 0..11 (C..B) or ARP_KEY_AUTO, and scale for Shift. */
 void arp_set_scale(ArpCore* a, int key, int scale);
 /* note + n semitones, pulled into the scale (n != 0); may return a value outside 0..127. */
 int  arp_shift_note(const ArpCore* a, int note, int n);

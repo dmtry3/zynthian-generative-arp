@@ -10,7 +10,8 @@ PORT_DEFAULTS = [("rate", 3), ("gate", 50), ("order", 0), ("octaves", 1), ("latc
                  ("len_prob", 16), ("len_shift", 16), ("len_vel", 16), ("len_gate", 16),
                  ("key", 0), ("scale", 0), ("mut_notes", 0), ("loop_len", 8), ("mut_steps", 0), ("reset", 0),
                  ("transpose", 0), ("rpt", 1), ("rpt_mode", 0),
-                 ("swing", 50), ("swing_feel", 0), ("drunk", 0), ("accent", 0)]
+                 ("swing", 50), ("swing_feel", 0), ("drunk", 0), ("accent", 0),
+                 ("passing", 0), ("pass_style", 0)]
 STEP_DEFAULTS = {"prob": 100, "shift": 0, "vel": 100, "gate": 0}   # gate: 0 Global, 5..100 %, 101 Tie
 G, TIE = 0, 101
 

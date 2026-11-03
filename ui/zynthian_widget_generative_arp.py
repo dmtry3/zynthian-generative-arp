@@ -308,7 +308,8 @@ class zynthian_widget_generative_arp(zynthian_widget_base.zynthian_widget_base):
         if key == "shift":                                   # Shift sticks to this scale (nothing for Chromatic)
             sc = self._scale()
             if sc > 0:
-                unit = "%s %s" % (KEYS[int(round(self._zval("key", 0))) % 12], SCALES[sc])
+                k = int(round(self._zval("key", 0)))
+                unit = "%s %s" % (KEYS[k] if 0 <= k < 12 else "Auto", SCALES[sc])   # 12 = Auto (lowest key)
                 c.create_text(x1 - 2, y0 + 1, anchor="ne", text=unit, tags="dyn", fill=tx_off,
                               font=(fam, max(6, int(tab_h * 0.22))))
 

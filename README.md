@@ -65,8 +65,10 @@ The controllers are grouped into pages of four:
 | | Repeats | 1–5, Rnd 3, Rnd 5 | how many steps each chord note plays |
 | | Rpt mode | Same, Run up, Run down, Octave, Echo | what the repeats do |
 | Lengths | Prob len, Shift len, Vel len, Gate len | 1–16 | length of each pattern row (polyrhythm) |
-| Scale | Key | C … B | tonic |
-| | Scale | Chromatic, Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, Harm minor, Mel minor, Major pent, Minor pent, Blues | scale for Shift |
+| Scale | Key | C … B, Auto | tonic (Auto: the lowest held key) |
+| | Scale | Chromatic, Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, Harm minor, Mel minor, Major pent, Minor pent, Blues | scale for Shift, Run, drift and passing notes |
+| | Passing % | 0–100 | chance of a passing note before a new chord note |
+| | Pass style | Neighbor, Leap, Approach, Mixed | which passing note |
 | Mutate | Notes % | 0–100 | Loop order only: chance that a loop step gets a new note |
 | | Loop len | 1–16 | Loop order only: length of the note loop |
 | | Steps % | 0–100 | any order: chance that a step of the pattern drifts |
@@ -170,6 +172,19 @@ With a scale selected, Shift stays in semitones but sticks to the scale:
 - **Shift 0** leaves the played note as it is, even if it isn't in the scale.
 - **Changing the scale** moves the Shift steps into the new scale in the widget. Between 7‑note scales
   the degree is kept (minor +3 → major +4); otherwise the nearest allowed value is used.
+- **Key: Auto** takes the tonic from the lowest held key, so the mode follows the bass: Dorian from D on
+  a Dm chord, from E on Em. The widget's Shift tab then says "Auto".
+
+### Passing notes
+
+When the note order moves to a new chord note, with the chance *Passing %* one step plays a passing note
+first and the next step resolves into the chord note (the order waits, as with a repeat):
+- **Neighbor:** the next scale note up or down. **Leap:** 2–3 scale notes up or down.
+  **Approach:** a semitone below (the only note outside the scale, and it resolves at once). **Mixed:** any of them.
+- In C major, chord C‑E‑G, Up, Approach: `B C  D# E  F# G`.
+- With *Repeats* the passing note comes before the whole run. It goes through Shift, drift and Transpose
+  like the chord note, so with the same Shift on both steps the resolution is exact.
+- With Chromatic a scale note is a semitone. The random choices use the mutation generator.
 
 ## Mutation
 

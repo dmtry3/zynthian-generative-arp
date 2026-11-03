@@ -36,6 +36,7 @@ void arp_init(ArpCore* a) {
   arp_set_loop(a, 0, 8);
   arp_set_repeats(a, 1, ARP_RPT_SAME);
   arp_set_groove(a, 50, ARP_FEEL_PAIRS, 0, 0);
+  arp_set_passing(a, 0, ARP_PASS_NEIGHBOR);
   a->done_s = -INFINITY;
   a->off_s = -INFINITY;
   arp_seed_mutation(a, 0);
@@ -43,7 +44,8 @@ void arp_init(ArpCore* a) {
 }
 
 void arp_set_scale(ArpCore* a, int key, int scale) {
-  a->key = clampi(key, 0, 11);
+  a->key_auto = key >= ARP_KEY_AUTO;
+  if (!a->key_auto) a->key = clampi(key, 0, 11);   /* Auto: set from the chord on every step */
   a->scale = clampi(scale, 0, ARP_NSCALES - 1);
 }
 
@@ -68,7 +70,13 @@ void arp_set_transpose(ArpCore* a, int octaves) { a->transpose = clampi(octaves,
 void arp_set_repeats(ArpCore* a, int rpt, int mode) {
   a->rpt = clampi(rpt, 1, ARP_RPT_RND5);
   a->rpt_mode = clampi(mode, 0, ARP_NRPT_MODES - 1);
-  if (a->rpt <= 5 && a->rpt_left > a->rpt - 1) a->rpt_left = a->rpt - 1;   /* fewer repeats: cut the current run */
+  const int max_left = a->rpt - 1 - a->rpt_k;   /* fewer repeats: cut the current run */
+  if (a->rpt <= 5 && a->rpt_left > max_left) a->rpt_left = max_left < 0 ? 0 : max_left;
+}
+
+void arp_set_passing(ArpCore* a, int pct, int style) {
+  a->passing = clampi(pct, 0, 100);
+  a->pass_style = clampi(style, 0, ARP_NPASS - 1);
 }
 
 void arp_set_groove(ArpCore* a, int swing, int feel, int drunk, int accent) {
@@ -381,6 +389,7 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
     a->step_count = 0;
     return;
   }
+  if (a->key_auto) a->key = a->held[0].note % 12;      /* held is sorted: [0] is the lowest key */
   ArpNote pat[ARP_MAX_PAT];
   int m = build_pattern(a, pat, a->order != ARP_PLAYED);
   if (m == 0) return;
@@ -394,6 +403,14 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
     base = pick(a, pat, m);                               /* the note order advances even if the step is silent */
     a->rpt_k = 0;
     a->rpt_left = (a->rpt <= 5 ? a->rpt : 1 + (int)(mrnd(a) % (a->rpt == ARP_RPT_RND3 ? 3u : 5u))) - 1;
+    if (chance(a, a->passing)) {                          /* a passing note first, the chord note next step */
+      int st = a->pass_style == ARP_PASS_MIXED ? (int)(mrnd(a) % 3u) : a->pass_style;
+      const int dir = (mrnd(a) >> 31) ? 1 : -1;
+      a->pass_approach = (st == ARP_PASS_APPROACH);       /* a semitone below */
+      a->pass_iv = (st == ARP_PASS_LEAP) ? dir * (2 + (int)(mrnd(a) >> 31)) : dir;
+      a->rpt_k = -1;
+      a->rpt_left++;
+    }
   }
   a->rpt_note = pat[base];
   const ArpNote* n = &a->rpt_note;
@@ -418,7 +435,10 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   a->step_count = a->count;
 
   int play = prob >= 100 || (prob > 0 && (int)(rnd(a) % 100u) < prob);
-  int pitch = arp_shift_note(a, n->note, ss->shift);
+  int note = n->note;
+  if (a->rpt_k < 0)                                       /* passing note: from the chord note, then as usual */
+    note = a->pass_approach ? note - 1 : drift_pitch(a, note, a->pass_iv);
+  int pitch = arp_shift_note(a, note, ss->shift);
   if (sdev) pitch = drift_pitch(a, pitch, sdev);
   const int k = a->rpt_k;
   if (k > 0) {
