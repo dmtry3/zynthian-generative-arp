@@ -64,10 +64,6 @@ The controllers are grouped into pages of four:
 | | Transpose | −2 … +2 octaves | added to every note at the very end |
 | | Repeats | 1–5, Rnd 3, Rnd 5 | how many steps each chord note plays |
 | | Rpt mode | Same, Run up, Run down, Octave, Echo | what the repeats do |
-| Groove | Swing % | 50–75 | delay of the swung steps (50 = straight) |
-| | Swing feel | Pairs, Fours, Drag, Threes | which steps are delayed and how much |
-| | Drunk % | 0–100 | timing slowly drifts late (up to 1/4 step) |
-| | Accent % | 0–100 | undelayed steps louder, delayed ones softer |
 | Lengths | Prob len, Shift len, Vel len, Gate len | 1–16 | length of each pattern row (polyrhythm) |
 | Scale | Key | C … B | tonic |
 | | Scale | Chromatic, Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, Harm minor, Mel minor, Major pent, Minor pent, Blues | scale for Shift |
@@ -75,6 +71,10 @@ The controllers are grouped into pages of four:
 | | Loop len | 1–16 | Loop order only: length of the note loop |
 | | Steps % | 0–100 | any order: chance that a step of the pattern drifts |
 | | Reset | toggle | any change: clear the drift, and make a new note loop |
+| Groove | Swing % | 50–75 | delay of the swung steps (50 = straight) |
+| | Swing feel | Pairs, Fours, Drag, Threes | which steps are delayed and how much |
+| | Drunk % | 0–100 | timing slowly drifts late (up to 1/4 step) |
+| | Accent % | 0–100 | undelayed steps louder, delayed ones softer and shorter |
 
 ### Order
 
@@ -125,8 +125,10 @@ Steps can only be delayed, never played early (the plugin does not look ahead).
   - **Threes:** `0 1 0` (groups of 3 steps: 3 against 4).
 - **Drunk %**: an extra delay of up to 1/4 step that wanders slowly (a random walk): a few notes lag,
   then catch up. Different after every Zynthian start.
-- **Accent %**: velocity by the feel: undelayed positions up to +20 %, fully delayed ones down to −40 %.
-  Works at Swing 50 % too, as a pure accent groove.
+- **Accent %**: velocity and gate by the feel. At 100 % undelayed positions go to velocity 127, fully
+  delayed ones down to 30 % of their velocity and half their gate (½-delayed: in between). Works at
+  Swing 50 % too, as a pure accent groove; the gate part is heard even on synths that ignore velocity.
+  Ties stay ties.
 - Gate is measured from each note's own start; a note that would overlap the next one is cut by it.
 
 ## The pattern (widget)

@@ -1178,17 +1178,29 @@ static void test_groove(void) {
   printf("%s: swing 75 %% + Drunk 100 %%: notes stay in order\n", ok ? "PASS" : "FAIL");
   failures += !ok;
 
-  /* Accent: by the feel shape, works without swing too */
+  /* Accent: by the feel shape, works without swing too; velocity and gate */
   l.n = 0; groove_run(&l, 50, ARP_FEEL_FOURS, 0, 100, 4, NULL, 0);
   n = on_ticks(&l, tk, vel);
-  ok = n == 4 && vel[0] == 120 && vel[1] == 90 && vel[2] == 60 && vel[3] == 90;
-  printf("%s: Accent 100 %%, Fours: 120 90 60 90\n", ok ? "PASS" : "FAIL");
+  ok = n == 4 && vel[0] == 127 && vel[1] == 79 && vel[2] == 30 && vel[3] == 79;
+  printf("%s: Accent 100 %%, Fours: velocity 127 79 30 79\n", ok ? "PASS" : "FAIL");
   if (!ok) { printf("  got:"); for (int i = 0; i < n; i++) printf(" %d", vel[i]); printf("\n"); failures++; }
-  l.n = 0; groove_run(&l, 50, ARP_FEEL_DRAG, 0, 50, 4, NULL, 0);
+  static const double eg[][3] = { {0, 1, 60}, {120, 0, 60}, {240, 1, 60}, {330, 0, 60}, {480, 1, 60}, {540, 0, 60},
+                                  {720, 1, 60}, {810, 0, 60} };
+  check("Accent 100 %, Fours: gate 50 % / 37.5 % / 25 % / 37.5 % of the step", &l, eg, 8);
+  l.n = 0; groove_run(&l, 50, ARP_FEEL_PAIRS, 0, 50, 2, NULL, 0);
   n = on_ticks(&l, tk, vel);
-  ok = n == 4 && vel[0] == 110 && vel[1] == 100 && vel[2] == 90 && vel[3] == 80;
-  printf("%s: Accent 50 %%, Drag: 110 100 90 80\n", ok ? "PASS" : "FAIL");
+  ok = n == 2 && vel[0] == 113 && vel[1] == 65;
+  printf("%s: Accent 50 %%, Pairs: velocity 113 65\n", ok ? "PASS" : "FAIL");
   if (!ok) { printf("  got:"); for (int i = 0; i < n; i++) printf(" %d", vel[i]); printf("\n"); failures++; }
+  {   /* a tie on a weak step stays a tie */
+    ArpCore a; arp_init(&a); arp_note_on(&a, 0, 60, 100); arp_note_on(&a, 0, 64, 100);
+    arp_set_length(&a, 1); arp_set_step(&a, 0, 100, 0, 100, ARP_GATE_TIE);
+    arp_set_groove(&a, 50, ARP_FEEL_PAIRS, 0, 100);
+    Log x = {0};
+    arp_process(&a, 0, 480, collect, &x);
+    static const double et[][3] = { {0, 1, 60}, {240, 1, 64}, {240, 0, 60} };
+    check("Accent keeps ties", &x, et, 3);
+  }
 
   /* relocation back: steps play again */
   {

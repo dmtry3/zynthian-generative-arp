@@ -13,7 +13,7 @@
 
 <urn:generativearp:arp#g_arp> a pg:Group ; lv2:symbol "g_arp" ; lv2:name "Arp" ; lv2:index 0 ; lv2:displayPriority 60 .
 <urn:generativearp:arp#g_pattern> a pg:Group ; lv2:symbol "g_pattern" ; lv2:name "Pattern" ; lv2:index 1 ; lv2:displayPriority 50 .
-<urn:generativearp:arp#g_groove> a pg:Group ; lv2:symbol "g_groove" ; lv2:name "Groove" ; lv2:index 5 ; lv2:displayPriority 45 .
+<urn:generativearp:arp#g_groove> a pg:Group ; lv2:symbol "g_groove" ; lv2:name "Groove" ; lv2:index 5 ; lv2:displayPriority 10 .
 <urn:generativearp:arp#g_lengths> a pg:Group ; lv2:symbol "g_lengths" ; lv2:name "Lengths" ; lv2:index 2 ; lv2:displayPriority 40 .
 <urn:generativearp:arp#g_scale> a pg:Group ; lv2:symbol "g_scale" ; lv2:name "Scale" ; lv2:index 3 ; lv2:displayPriority 30 .
 <urn:generativearp:arp#g_mutate> a pg:Group ; lv2:symbol "g_mutate" ; lv2:name "Mutate" ; lv2:index 4 ; lv2:displayPriority 20 .

@@ -435,9 +435,12 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   int vel = n->vel * velp / 100;
   if (a->rpt_mode == ARP_RPT_ECHO)
     for (int j = 0; j < k; j++) vel = vel * ARP_ECHO_PCT / 100;
-  if (a->accent)   /* undelayed positions +20 %, fully delayed -40 % at Accent 100 % */
-    vel = vel * (10000 + a->accent * (20 - 10 * a->off_sixths)) / 10000;
   vel = clampi(vel, 1, 127);
+  if (a->accent) {   /* by the feel shape h: h = 0 toward 127, h = 1 down to 30 % (at Accent 100 %) */
+    const int hi = vel + a->accent * (127 - vel) / 100;
+    const int lo = vel * (100 - 70 * a->accent / 100) / 100;
+    vel = clampi((hi * (6 - a->off_sixths) + lo * a->off_sixths + 3) / 6, 1, 127);
+  }
 
   if (a->sounding && a->tied && a->on_note == pitch && a->on_ch == n->ch) {
     /* tied into the same pitch: the note just continues */
@@ -455,6 +458,7 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
     a->off_tick = INFINITY;                             /* ends at the next step */
   } else {
     int g = (gate == ARP_GATE_GLOBAL) ? a->gate_ticks : a->step_ticks * gate / 100;
+    if (a->accent) g = g * (1200 - a->accent * a->off_sixths) / 1200;   /* delayed steps shorter, down to 1/2 */
     a->tied = 0;
     a->off_tick = s + (g < 1 ? 1 : g);
   }

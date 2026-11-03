@@ -67,7 +67,7 @@ typedef struct {
   int key, scale;               /* key 0..11 (C..B), scale ARP_SCALE_* */
   int transpose;                /* -2..+2 octaves, added to every generated note */
   int rpt, rpt_mode;            /* repeats 1..5 or ARP_RPT_RND*, ARP_RPT_* mode */
-  int swing, feel, drunk, accent; /* swing 50..75 %, ARP_FEEL_*, drunk 0..100 %, accent 0..100 % */
+  int swing, feel, drunk, accent; /* swing 50..75 %, ARP_FEEL_*, drunk 0..100 %, accent 0..100 % (velocity and gate) */
 
   /* note order state; reset when all keys are released */
   int has_last;                 /* last played pitch valid */
