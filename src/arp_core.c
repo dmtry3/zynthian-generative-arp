@@ -34,6 +34,7 @@ void arp_init(ArpCore* a) {
   arp_set_scale(a, 0, ARP_SCALE_CHROMATIC);
   for (int i = 0; i < ARP_MAX_STEPS; i++) arp_set_step(a, i, 100, 0, 100, ARP_GATE_GLOBAL);
   arp_set_loop(a, 0, 8);
+  arp_set_repeats(a, 1, ARP_RPT_SAME);
   arp_seed_mutation(a, 0);
   arp_reset_mutation(a);
 }
@@ -60,6 +61,12 @@ int arp_shift_note(const ArpCore* a, int note, int n) {
 }
 
 void arp_set_transpose(ArpCore* a, int octaves) { a->transpose = clampi(octaves, -2, 2); }
+
+void arp_set_repeats(ArpCore* a, int rpt, int mode) {
+  a->rpt = clampi(rpt, 1, ARP_RPT_RND5);
+  a->rpt_mode = clampi(mode, 0, ARP_NRPT_MODES - 1);
+  if (a->rpt <= 5 && a->rpt_left > a->rpt - 1) a->rpt_left = a->rpt - 1;   /* fewer repeats: cut the current run */
+}
 
 void arp_set_lane_length(ArpCore* a, int lane, int length) {
   if (lane >= 0 && lane < ARP_NLANES) a->lane_len[lane] = clampi(length, 1, ARP_MAX_STEPS);
@@ -122,7 +129,10 @@ static int key_less(uint8_t n1, uint8_t c1, uint8_t n2, uint8_t c2) {
   return n1 != n2 ? n1 < n2 : c1 < c2;
 }
 
-static void reset_order(ArpCore* a) { a->has_last = 0; a->played_idx = 0; a->count = 0; }
+static void reset_order(ArpCore* a) {
+  a->has_last = 0; a->played_idx = 0; a->count = 0; a->loop_pos = 0;
+  a->rpt_left = 0; a->rpt_k = 0;
+}
 
 static int find(const ArpNote* v, int n, uint8_t ch, uint8_t note) {
   for (int i = 0; i < n; i++) if (v[i].ch == ch && v[i].note == note) return i;
@@ -255,7 +265,7 @@ static int pick(ArpCore* a, const ArpNote* p, int m) {
     return i >= k ? i + 1 : i;
   }
   case ARP_LOOP: {   /* the loop step may mutate when it is read, then maps onto the chord */
-    const uint32_t pos = a->count % (uint32_t)a->loop_len;
+    const uint32_t pos = a->loop_pos++ % (uint32_t)a->loop_len;
     if (chance(a, a->mut_notes)) a->loop[pos] = (uint16_t)(mrnd(a) >> 16);
     return (int)(((uint32_t)a->loop[pos] * (uint32_t)m) >> 16);
   }
@@ -337,7 +347,19 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   ArpNote pat[ARP_MAX_PAT];
   int m = build_pattern(a, pat, a->order != ARP_PLAYED);
   if (m == 0) return;
-  const ArpNote* n = &pat[pick(a, pat, m)];              /* the note order advances even if the step is silent */
+  /* Repeats: the same chord note for several steps; the note order (and Loop) waits meanwhile. */
+  int base = -1;
+  if (a->rpt_left > 0)
+    for (int j = 0; j < m; j++) if (pat[j].note == a->rpt_note.note && pat[j].ch == a->rpt_note.ch) { base = j; break; }
+  if (base >= 0) {
+    a->rpt_left--; a->rpt_k++;
+  } else {                                                /* a new note (or the repeated one was released) */
+    base = pick(a, pat, m);                               /* the note order advances even if the step is silent */
+    a->rpt_k = 0;
+    a->rpt_left = (a->rpt <= 5 ? a->rpt : 1 + (int)(mrnd(a) % (a->rpt == ARP_RPT_RND3 ? 3u : 5u))) - 1;
+  }
+  a->rpt_note = pat[base];
+  const ArpNote* n = &a->rpt_note;
   a->has_last = 1; a->last_ch = n->ch; a->last_note = n->note;
 
   /* each row reads its own step */
@@ -361,6 +383,12 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   int play = prob >= 100 || (prob > 0 && (int)(rnd(a) % 100u) < prob);
   int pitch = arp_shift_note(a, n->note, ss->shift);
   if (sdev) pitch = drift_pitch(a, pitch, sdev);
+  const int k = a->rpt_k;
+  if (k > 0) {
+    if (a->rpt_mode == ARP_RPT_RUN_UP) pitch = drift_pitch(a, pitch, k);
+    else if (a->rpt_mode == ARP_RPT_RUN_DOWN) pitch = drift_pitch(a, pitch, -k);
+    else if (a->rpt_mode == ARP_RPT_OCT && (k & 1)) pitch += 12;
+  }
   pitch += 12 * a->transpose;
   if (pitch < 0 || pitch > 127) play = 0;
   if (!play) {
@@ -368,6 +396,8 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
     return;
   }
   int vel = n->vel * velp / 100;
+  if (a->rpt_mode == ARP_RPT_ECHO)
+    for (int j = 0; j < k; j++) vel = vel * ARP_ECHO_PCT / 100;
   vel = clampi(vel, 1, 127);
 
   if (a->sounding && a->tied && a->on_note == pitch && a->on_ch == n->ch) {

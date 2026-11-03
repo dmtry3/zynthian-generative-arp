@@ -62,6 +62,8 @@ The controllers are grouped into pages of four:
 | | Octaves | 1–4 | the chord repeated over this many octaves |
 | Pattern | Latch | on/off | the chord keeps playing after the keys are released |
 | | Transpose | −2 … +2 octaves | added to every note at the very end |
+| | Repeats | 1–5, Rnd 3, Rnd 5 | how many steps each chord note plays |
+| | Rpt mode | Same, Run up, Run down, Octave, Echo | what the repeats do |
 | Lengths | Prob len, Shift len, Vel len, Gate len | 1–16 | length of each pattern row (polyrhythm) |
 | Scale | Key | C … B | tonic |
 | | Scale | Chromatic, Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, Harm minor, Mel minor, Major pent, Minor pent, Blues | scale for Shift |
@@ -89,6 +91,21 @@ The controllers are grouped into pages of four:
 
 The control can be mapped to a button on a MIDI controller (Zynthian's MIDI learn; use the momentary
 switch option in the binding settings if you want it to act only while held).
+
+### Repeats
+
+Each chord note plays for several grid steps before the note order moves on: Up with *Repeats 2* gives
+`C C E E G G`. *Rnd 3* / *Rnd 5* pick 1–3 / 1–5 repeats at random for every new note.
+
+- A repeat is a normal step: the pattern rows keep advancing, so the repeats get their own probability,
+  shift, velocity and gate (and the polyrhythm keeps turning). A silent step still counts as a repeat.
+- *Rpt mode* changes the repeats (not the first note):
+  - **Same:** the same note.
+  - **Run up / Run down:** each repeat one scale note higher / lower (semitones with Chromatic):
+    in C major Up with 3 repeats gives `C D E  E F G  G A B`.
+  - **Octave:** every other repeat an octave up (`C C' C C'`).
+  - **Echo:** each repeat at 70 % of the previous velocity.
+- The Loop order and its mutation advance once per chord note, not per repeat.
 
 ## The pattern (widget)
 
@@ -158,6 +175,7 @@ whole pattern. The factory bank **Factory** has:
 - **Polyrhythm 7‑3‑4‑5:** row lengths 7/3/4/5, Up‑Down over 2 octaves.
 - **Turing A minor:** Loop order in A minor with slow note mutation.
 - **Breathing C major:** a pattern in C major with step mutation.
+- **Scale Runs D dorian:** random repeats (Rnd 3) running up the scale from each chord note.
 
 Snapshots work too: Zynthian saves the controls and the pattern.
 

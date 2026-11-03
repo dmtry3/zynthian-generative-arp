@@ -44,3 +44,9 @@
     rdfs:label "Breathing C major" ;
     rdfs:seeAlso <presets.ttl> .
 
+<urn:generativearp:arp#preset_scale_runs>
+    a pset:Preset ;
+    lv2:appliesTo <urn:generativearp:arp> ;
+    rdfs:label "Scale Runs D dorian" ;
+    rdfs:seeAlso <presets.ttl> .
+

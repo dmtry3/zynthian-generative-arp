@@ -9,7 +9,7 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 PORT_DEFAULTS = [("rate", 3), ("gate", 50), ("order", 0), ("octaves", 1), ("latch", 0),
                  ("len_prob", 16), ("len_shift", 16), ("len_vel", 16), ("len_gate", 16),
                  ("key", 0), ("scale", 0), ("mut_notes", 0), ("loop_len", 8), ("mut_steps", 0), ("reset", 0),
-                 ("transpose", 0)]
+                 ("transpose", 0), ("rpt", 1), ("rpt_mode", 0)]
 STEP_DEFAULTS = {"prob": 100, "shift": 0, "vel": 100, "gate": 0}   # gate: 0 Global, 5..100 %, 101 Tie
 G, TIE = 0, 101
 
@@ -37,6 +37,10 @@ PRESETS = [
      {"shift": [0, 0, 2, 0, 4, 0, -3, 0],
       "vel":   [110, 70, 90, 70, 100, 70, 90, 60],
       "prob":  [100, 100, 100, 80, 100, 100, 100, 80]}),
+    ("scale_runs", "Scale Runs D dorian",
+     {"gate": 70, "octaves": 2, "key": 2, "scale": 3, "rpt": 6, "rpt_mode": 1, "len_vel": 3, "len_gate": 5},
+     {"vel":  [125, 80, 95],
+      "gate": [G, G, G, G, TIE]}),
 ]
 
 

@@ -28,6 +28,13 @@ enum { ARP_SCALE_CHROMATIC, ARP_SCALE_MAJOR, ARP_SCALE_MINOR, ARP_SCALE_DORIAN, 
 enum { ARP_RATE_4, ARP_RATE_8, ARP_RATE_8T, ARP_RATE_16, ARP_RATE_16T, ARP_RATE_32, ARP_NRATES };
 /* ARP_LOOP: a loop of random positions in the chord (Turing Machine style), see arp_set_loop(). */
 enum { ARP_UP, ARP_DOWN, ARP_UPDOWN, ARP_DOWNUP, ARP_PLAYED, ARP_RANDOM, ARP_LOOP, ARP_NORDERS };
+/* Repeats: 1..5 = each chord note plays that many grid steps; RND3/RND5 = 1..3 / 1..5 at random per note. */
+#define ARP_RPT_RND3 6
+#define ARP_RPT_RND5 7
+/* What the repeats (not the first note) do: same note, k scale notes up/down, every other one an octave
+ * up, or quieter by ARP_ECHO_PCT % each. */
+enum { ARP_RPT_SAME, ARP_RPT_RUN_UP, ARP_RPT_RUN_DOWN, ARP_RPT_OCT, ARP_RPT_ECHO, ARP_NRPT_MODES };
+#define ARP_ECHO_PCT 70
 
 /* Called for every outgoing MIDI event; tick is inside the range passed to arp_process(). */
 typedef void (*arp_emit_fn)(void* user, double tick, uint8_t st, uint8_t d1, uint8_t d2);
@@ -57,12 +64,16 @@ typedef struct {
   int lane_len[ARP_NLANES];     /* length of each row 1..16 */
   int key, scale;               /* key 0..11 (C..B), scale ARP_SCALE_* */
   int transpose;                /* -2..+2 octaves, added to every generated note */
+  int rpt, rpt_mode;            /* repeats 1..5 or ARP_RPT_RND*, ARP_RPT_* mode */
 
   /* note order state; reset when all keys are released */
   int has_last;                 /* last played pitch valid */
   uint8_t last_ch, last_note;
   int dir;                      /* +1 / -1 for Up-Down and Down-Up */
   uint32_t played_idx;          /* As played position */
+  uint32_t loop_pos;            /* Loop order position (advances once per chord note, not per repeat) */
+  int rpt_left, rpt_k;          /* repeats still to play of the current note, number of the current repeat */
+  ArpNote rpt_note;             /* the chord note being repeated */
   uint32_t count;               /* grid steps since the pattern restarted; row r uses step count % lane_len[r] */
   uint32_t step_count;          /* number of the last step (1-based) for display; 0 when idle */
   uint32_t rng;
@@ -105,6 +116,8 @@ int  arp_drifted(const ArpCore* a, int lane, int v, int d);
 void arp_mutate_step(ArpCore* a, int i, int lane);
 /* Transpose all generated notes by -2..+2 octaves (takes effect on the next step). */
 void arp_set_transpose(ArpCore* a, int octaves);
+/* Repeats 1..5 / ARP_RPT_RND3 / ARP_RPT_RND5 and their mode ARP_RPT_* (takes effect on the next step). */
+void arp_set_repeats(ArpCore* a, int rpt, int mode);
 /* Key 0..11 (C..B) and scale for Shift. */
 void arp_set_scale(ArpCore* a, int key, int scale);
 /* note + n semitones, pulled into the scale (n != 0); may return a value outside 0..127. */

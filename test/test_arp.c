@@ -938,6 +938,142 @@ static void test_transpose(void) {
   check("tie on a transposed note continues it", &l, e5, 2);
 }
 
+/* ---------- repeats ---------- */
+
+static void test_repeats(void) {
+  ArpCore a; int g[128], n;
+  arp_init(&a); chord(&a);
+  arp_set_repeats(&a, 2, ARP_RPT_SAME);
+  n = play(&a, 0, 240 * 8, g);
+  static const int e1[] = { 60, 60, 64, 64, 67, 67, 60, 60 };
+  expect("Repeats 2, Up: C C E E G G C C", g, n, e1, 8);
+
+  arp_init(&a); chord(&a);
+  arp_set_params(&a, ARP_RATE_16, 50, ARP_UPDOWN, 1);
+  arp_set_repeats(&a, 3, ARP_RPT_SAME);
+  n = play(&a, 0, 240 * 12, g);
+  static const int e2[] = { 60, 60, 60, 64, 64, 64, 67, 67, 67, 64, 64, 64 };
+  expect("Repeats 3, Up-Down: the order waits during repeats", g, n, e2, 12);
+
+  /* Run up/down in C major (scale notes), chromatic = semitones */
+  arp_init(&a); chord(&a); arp_set_scale(&a, 0, ARP_SCALE_MAJOR);
+  arp_set_repeats(&a, 3, ARP_RPT_RUN_UP);
+  n = play(&a, 0, 240 * 9, g);
+  static const int e3[] = { 60, 62, 64, 64, 65, 67, 67, 69, 71 };
+  expect("Run up, C major: C D E | E F G | G A B", g, n, e3, 9);
+  arp_init(&a); chord(&a); arp_set_scale(&a, 0, ARP_SCALE_MAJOR);
+  arp_set_repeats(&a, 3, ARP_RPT_RUN_DOWN);
+  n = play(&a, 0, 240 * 9, g);
+  static const int e4[] = { 60, 59, 57, 64, 62, 60, 67, 65, 64 };
+  expect("Run down, C major: C B A | E D C | G F E", g, n, e4, 9);
+  arp_init(&a); chord(&a);
+  arp_set_repeats(&a, 2, ARP_RPT_RUN_UP);
+  n = play(&a, 0, 240 * 4, g);
+  static const int e5[] = { 60, 61, 64, 65 };
+  expect("Run up, chromatic: semitones", g, n, e5, 4);
+
+  arp_init(&a); chord(&a);
+  arp_set_repeats(&a, 4, ARP_RPT_OCT);
+  n = play(&a, 0, 240 * 8, g);
+  static const int e6[] = { 60, 72, 60, 72, 64, 76, 64, 76 };
+  expect("Octave: every other repeat an octave up", g, n, e6, 8);
+
+  /* Echo: 100, 70, 49, 34 % of the key velocity */
+  arp_init(&a); arp_note_on(&a, 0, 60, 100);
+  arp_set_repeats(&a, 4, ARP_RPT_ECHO);
+  Log l = {0};
+  arp_process(&a, 0, 240 * 5, collect, &l);
+  int v[8], k = 0;
+  for (int i = 0; i < l.n; i++) if ((l.ev[i].st & 0xF0) == 0x90 && k < 8) v[k++] = l.ev[i].d2;
+  int ok = k == 5 && v[0] == 100 && v[1] == 70 && v[2] == 49 && v[3] == 34 && v[4] == 100;
+  printf("%s: Echo: each repeat quieter, a new note at full velocity\n", ok ? "PASS" : "FAIL");
+  if (!ok) { printf("  got:"); for (int i = 0; i < k; i++) printf(" %d", v[i]); printf("\n"); failures++; }
+
+  /* pattern rows advance on every repeat: vel row 50 % on step 2 hits the repeat */
+  arp_init(&a); arp_note_on(&a, 0, 60, 100); arp_note_on(&a, 0, 64, 100);
+  arp_set_length(&a, 2);
+  arp_set_step(&a, 1, 100, 0, 50, ARP_GATE_GLOBAL);
+  arp_set_repeats(&a, 2, ARP_RPT_SAME);
+  l.n = 0;
+  arp_process(&a, 0, 240 * 4, collect, &l);
+  k = 0;
+  int p[8];
+  for (int i = 0; i < l.n; i++) if ((l.ev[i].st & 0xF0) == 0x90 && k < 8) { p[k] = l.ev[i].d1; v[k] = l.ev[i].d2; k++; }
+  ok = k == 4 && p[0] == 60 && p[1] == 60 && p[2] == 64 && p[3] == 64 && v[0] == 100 && v[1] == 50 && v[2] == 100 && v[3] == 50;
+  printf("%s: pattern rows advance on repeats\n", ok ? "PASS" : "FAIL");
+  failures += !ok;
+
+  /* a silent step (prob 0) still counts as a repeat */
+  arp_init(&a); chord(&a);
+  arp_set_length(&a, 2);
+  arp_set_step(&a, 1, 0, 0, 100, ARP_GATE_GLOBAL);
+  arp_set_repeats(&a, 2, ARP_RPT_SAME);
+  n = play(&a, 0, 240 * 6, g);
+  static const int e7[] = { 60, 64, 67 };
+  expect("a silent repeat is still a repeat", g, n, e7, 3);
+
+  /* Loop: repeats do not skip loop positions and do not mutate it */
+  loop_core(&a, 4, 0);
+  arp_set_repeats(&a, 2, ARP_RPT_SAME);
+  n = play(&a, 0, 240 * 8, g);
+  static const int e8[] = { 60, 60, 64, 64, 67, 67, 60, 60 };
+  expect("Loop with repeats 2: every loop position, each twice", g, n, e8, 8);
+  loop_core(&a, 4, 100);
+  arp_set_repeats(&a, 3, ARP_RPT_SAME);
+  play(&a, 0, 240 * 3, g);
+  uint32_t r1 = a.mrng;
+  loop_core(&a, 4, 100);
+  arp_set_repeats(&a, 1, ARP_RPT_SAME);
+  play(&a, 0, 240, g);
+  printf("%s: Loop mutation happens once per note, not per repeat\n", a.mrng == r1 ? "PASS" : "FAIL");
+  failures += a.mrng != r1;
+
+  /* Rnd 3: counts 1..3, reproducible from the seed, all three occur */
+  int runs[3][64], nr[3];
+  for (int t = 0; t < 2; t++) {
+    arp_init(&a); arp_note_on(&a, 0, 60, 100); arp_note_on(&a, 0, 72, 100);
+    arp_seed_mutation(&a, 12345);
+    arp_set_repeats(&a, ARP_RPT_RND3, ARP_RPT_SAME);
+    nr[t] = play(&a, 0, 240 * 64, runs[t]);
+  }
+  int seen[6] = {0}; ok = nr[0] == 64 && nr[0] == nr[1] && !memcmp(runs[0], runs[1], sizeof(int) * 64);
+  for (int i = 0; ok && i < 64;) {
+    int j = i; while (j < 64 && runs[0][j] == runs[0][i]) j++;
+    int len = j - i;
+    if (j < 64 && (len < 1 || len > 3)) ok = 0;   /* the last run may be cut by the end of the test */
+    if (j < 64) seen[len] = 1;
+    i = j;
+  }
+  ok = ok && seen[1] && seen[2] && seen[3];
+  printf("%s: Rnd 3: 1..3 repeats per note, reproducible, all counts occur\n", ok ? "PASS" : "FAIL");
+  failures += !ok;
+
+  /* the repeated note is released (latch off): the next note starts at once */
+  arp_init(&a); chord(&a);
+  arp_set_repeats(&a, 4, ARP_RPT_SAME);
+  n = play(&a, 0, 240 * 2, g);
+  arp_note_off(&a, 0, 60);
+  n = play(&a, 240 * 2, 240 * 3, g);
+  static const int e9[] = { 64 };
+  expect("released repeated note: the order moves on", g, n, e9, 1);
+
+  /* fewer repeats while running: the current run is cut */
+  arp_init(&a); chord(&a);
+  arp_set_repeats(&a, 5, ARP_RPT_SAME);
+  play(&a, 0, 240, g);
+  arp_set_repeats(&a, 2, ARP_RPT_SAME);
+  n = play(&a, 240, 240 * 4, g);
+  static const int e10[] = { 60, 64, 64 };
+  expect("Repeats lowered from 5 to 2 mid-run", g, n, e10, 3);
+
+  /* run with transpose and out of range */
+  arp_init(&a); arp_note_on(&a, 0, 126, 100);
+  arp_set_repeats(&a, 3, ARP_RPT_RUN_UP);
+  n = play(&a, 0, 240 * 3, g);
+  static const int e11[] = { 126, 127 };
+  expect("Run up above 127 is silent", g, n, e11, 2);
+}
+
 int main(void) {
   test_up_one_block();
   test_chunks();
@@ -974,6 +1110,7 @@ int main(void) {
   test_step_mutation();
   test_mutation_details();
   test_transpose();
+  test_repeats();
   printf(failures ? "\n%d FAILED\n" : "\nALL PASSED\n", failures);
   return failures ? 1 : 0;
 }
