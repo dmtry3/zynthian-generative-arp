@@ -29,6 +29,7 @@ enum { P_RATE = 0, P_GATE, P_ORDER, P_OCTAVES, P_LATCH,
        P_MUT_NOTES, P_LOOP_LEN, P_MUT_STEPS, P_RESET,     /* mutation; any change of reset = reset */
        P_TRANSPOSE,                                       /* -2..+2 octaves */
        P_RPT, P_RPT_MODE,                                 /* repeats 1..5 / Rnd 3 / Rnd 5, ARP_RPT_* mode */
+       P_SWING, P_FEEL, P_DRUNK, P_ACCENT,                /* groove */
        P_END, P_MIDI_IN = P_END, P_MIDI_OUT, P_STEP_COUNT,     /* step_count: output, for the widget */
        P_DEV0 };   /* dev1..dev16 outputs: drift of each step for the widget, see pack_dev() */
 
@@ -257,6 +258,8 @@ static void run(LV2_Handle h, uint32_t n) {
   arp_set_mut_steps(&A->core, ctl_int(A, P_MUT_STEPS, 0));
   arp_set_transpose(&A->core, ctl_int(A, P_TRANSPOSE, 0));
   arp_set_repeats(&A->core, ctl_int(A, P_RPT, 1), ctl_int(A, P_RPT_MODE, ARP_RPT_SAME));
+  arp_set_groove(&A->core, ctl_int(A, P_SWING, 50), ctl_int(A, P_FEEL, ARP_FEEL_PAIRS),
+                 ctl_int(A, P_DRUNK, 0), ctl_int(A, P_ACCENT, 0));
   const int rs = ctl_int(A, P_RESET, 0) != 0;
   if (A->reset_prev >= 0 && rs != A->reset_prev) arp_reset_mutation(&A->core);
   A->reset_prev = rs;

@@ -64,6 +64,10 @@ The controllers are grouped into pages of four:
 | | Transpose | −2 … +2 octaves | added to every note at the very end |
 | | Repeats | 1–5, Rnd 3, Rnd 5 | how many steps each chord note plays |
 | | Rpt mode | Same, Run up, Run down, Octave, Echo | what the repeats do |
+| Groove | Swing % | 50–75 | delay of the swung steps (50 = straight) |
+| | Swing feel | Pairs, Fours, Drag, Threes | which steps are delayed and how much |
+| | Drunk % | 0–100 | timing slowly drifts late (up to 1/4 step) |
+| | Accent % | 0–100 | undelayed steps louder, delayed ones softer |
 | Lengths | Prob len, Shift len, Vel len, Gate len | 1–16 | length of each pattern row (polyrhythm) |
 | Scale | Key | C … B | tonic |
 | | Scale | Chromatic, Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, Harm minor, Mel minor, Major pent, Minor pent, Blues | scale for Shift |
@@ -106,6 +110,24 @@ Each chord note plays for several grid steps before the note order moves on: Up 
   - **Octave:** every other repeat an octave up (`C C' C C'`).
   - **Echo:** each repeat at 70 % of the previous velocity.
 - The Loop order and its mutation advance once per chord note, not per repeat.
+
+### Groove
+
+Steps can only be delayed, never played early (the plugin does not look ahead).
+
+- **Swing %** sets the full delay: 50 % = straight, 75 % = half a step. Useful values: 57 % ≈ septuplet,
+  60 % ≈ quintuplet, 67 % ≈ triplet swing. The swing counts arp steps (*Rate*): at 1/16 it swings sixteenths.
+  Positions follow the song grid, so with the transport running the swing lines up with Zynthian's drums.
+- **Swing feel**: the share of the full delay for each step position:
+  - **Pairs:** `0 1` (classic swing).
+  - **Fours:** `0 ½ 1 ½` (eighth-note swing with sixteenth steps).
+  - **Drag:** `0 ⅓ ⅔ 1` (the beat drags and snaps back on the downbeat).
+  - **Threes:** `0 1 0` (groups of 3 steps: 3 against 4).
+- **Drunk %**: an extra delay of up to 1/4 step that wanders slowly (a random walk): a few notes lag,
+  then catch up. Different after every Zynthian start.
+- **Accent %**: velocity by the feel: undelayed positions up to +20 %, fully delayed ones down to −40 %.
+  Works at Swing 50 % too, as a pure accent groove.
+- Gate is measured from each note's own start; a note that would overlap the next one is cut by it.
 
 ## The pattern (widget)
 

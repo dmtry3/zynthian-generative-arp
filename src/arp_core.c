@@ -35,6 +35,9 @@ void arp_init(ArpCore* a) {
   for (int i = 0; i < ARP_MAX_STEPS; i++) arp_set_step(a, i, 100, 0, 100, ARP_GATE_GLOBAL);
   arp_set_loop(a, 0, 8);
   arp_set_repeats(a, 1, ARP_RPT_SAME);
+  arp_set_groove(a, 50, ARP_FEEL_PAIRS, 0, 0);
+  a->done_s = -INFINITY;
+  a->off_s = -INFINITY;
   arp_seed_mutation(a, 0);
   arp_reset_mutation(a);
 }
@@ -66,6 +69,13 @@ void arp_set_repeats(ArpCore* a, int rpt, int mode) {
   a->rpt = clampi(rpt, 1, ARP_RPT_RND5);
   a->rpt_mode = clampi(mode, 0, ARP_NRPT_MODES - 1);
   if (a->rpt <= 5 && a->rpt_left > a->rpt - 1) a->rpt_left = a->rpt - 1;   /* fewer repeats: cut the current run */
+}
+
+void arp_set_groove(ArpCore* a, int swing, int feel, int drunk, int accent) {
+  a->swing = clampi(swing, 50, 75);
+  a->feel = clampi(feel, 0, ARP_NFEELS - 1);
+  a->drunk = clampi(drunk, 0, 100);
+  a->accent = clampi(accent, 0, 100);
 }
 
 void arp_set_lane_length(ArpCore* a, int lane, int length) {
@@ -275,6 +285,33 @@ static int pick(ArpCore* a, const ArpNote* p, int m) {
   }
 }
 
+/* Share of the swing delay (sixths) of each grid position, per feel. */
+static const int8_t feel_len[ARP_NFEELS] = { 2, 4, 4, 3 };
+static const int8_t feel_shape[ARP_NFEELS][4] = {
+  { 0, 6 },          /* Pairs:  0 1 */
+  { 0, 3, 6, 3 },    /* Fours:  0 1/2 1 1/2 */
+  { 0, 2, 4, 6 },    /* Drag:   0 1/3 2/3 1 */
+  { 0, 6, 0 },       /* Threes: 0 1 0 */
+};
+
+double arp_step_offset(ArpCore* a, double s) {
+  const double step = a->step_ticks;
+  if (s == a->off_s && step == a->off_step) return a->off_val;
+  const long long pos = llround(s / step);
+  const int len = feel_len[a->feel];
+  const int sixths = feel_shape[a->feel][(int)(((pos % len) + len) % len)];
+  double off = step * (2 * a->swing - 100) / 100.0 * sixths / 6.0;
+  if (a->drunk > 0) {   /* random walk: at most 0.2 of the range per step, reflected at 0 and 1 */
+    float w = a->drunk_w + ((float)(mrnd(a) >> 8) / 16777216.0f * 2.0f - 1.0f) * 0.2f;
+    if (w < 0) w = -w;
+    if (w > 1) w = 2 - w;
+    a->drunk_w = w;
+    off += w * a->drunk / 100.0 * step / 4.0;
+  }
+  a->off_s = s; a->off_step = step; a->off_val = off; a->off_sixths = sixths;
+  return off;
+}
+
 static void note_off_at(ArpCore* a, double tick, arp_emit_fn emit, void* user) {
   emit(user, tick, (uint8_t)(0x80 | a->on_ch), a->on_note, 0);
   a->sounding = 0;
@@ -337,7 +374,7 @@ void arp_mutate_step(ArpCore* a, int i, int r) {
   a->dev[i][r] = (int8_t)(d + ok[n == 2 ? (int)(mrnd(a) & 1u) : 0]);
 }
 
-/* One step of the grid at tick s. */
+/* One step of the grid, played at tick s (grid step + groove offset). */
 static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   if (a->nheld == 0) {
     if (a->sounding && a->tied) note_off_at(a, s, emit, user);   /* a tie has nothing to go to */
@@ -398,6 +435,8 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
   int vel = n->vel * velp / 100;
   if (a->rpt_mode == ARP_RPT_ECHO)
     for (int j = 0; j < k; j++) vel = vel * ARP_ECHO_PCT / 100;
+  if (a->accent)   /* undelayed positions +20 %, fully delayed -40 % at Accent 100 % */
+    vel = vel * (10000 + a->accent * (20 - 10 * a->off_sixths)) / 10000;
   vel = clampi(vel, 1, 127);
 
   if (a->sounding && a->tied && a->on_note == pitch && a->on_ch == n->ch) {
@@ -424,16 +463,22 @@ static void do_step(ArpCore* a, double s, arp_emit_fn emit, void* user) {
 void arp_process(ArpCore* a, double from, double to, arp_emit_fn emit, void* user) {
   if (to <= from) return;
   const double step = a->step_ticks;
-  double s = ceil(from / step) * step;
+  if (from < a->done_s - step) a->done_s = -INFINITY;     /* time went back (relocation) */
+  /* a grid step before `from` may still be due: its offset is always less than a step */
+  double s = ceil(from / step) * step - step;
   for (;;) {
+    if (s <= a->done_s) { s += step; continue; }
+    const double e = s + arp_step_offset(a, s);
+    if (e < from) { a->done_s = s; s += step; continue; }  /* missed (jump into the middle) */
     int off_due = a->sounding && a->off_tick < to;
-    int step_due = s < to;
-    if (off_due && (!step_due || a->off_tick <= s)) {
+    int step_due = e < to;
+    if (off_due && (!step_due || a->off_tick <= e)) {
       note_off_at(a, a->off_tick > from ? a->off_tick : from, emit, user);
       continue;
     }
     if (!step_due) break;
-    do_step(a, s, emit, user);
+    do_step(a, e, emit, user);
+    a->done_s = s;
     s += step;
   }
 }

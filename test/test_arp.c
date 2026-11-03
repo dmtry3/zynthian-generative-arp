@@ -1074,6 +1074,155 @@ static void test_repeats(void) {
   expect("Run up above 127 is silent", g, n, e11, 2);
 }
 
+/* ---------- groove ---------- */
+
+/* note-on ticks of a log */
+static int on_ticks(const Log* l, double* out, int* vel) {
+  int k = 0;
+  for (int i = 0; i < l->n; i++) if ((l->ev[i].st & 0xF0) == 0x90) { out[k] = l->ev[i].tick; if (vel) vel[k] = l->ev[i].d2; k++; }
+  return k;
+}
+
+static void expect_ticks(const char* name, const double* got, int n, const double* exp, int nexp) {
+  int ok = n == nexp;
+  for (int i = 0; ok && i < n; i++) if (fabs(got[i] - exp[i]) > 1e-6) ok = 0;
+  printf("%s: %s\n", ok ? "PASS" : "FAIL", name);
+  if (!ok) {
+    printf("  got:"); for (int i = 0; i < n; i++) printf(" %.1f", got[i]);
+    printf("\n  exp:"); for (int i = 0; i < nexp; i++) printf(" %.1f", exp[i]);
+    printf("\n"); failures++;
+  }
+}
+
+static void groove_run(Log* l, int swing, int feel, int drunk, int accent, int nsteps, const double* chunks, int nch) {
+  ArpCore a; arp_init(&a); arp_note_on(&a, 0, 60, 100);
+  arp_set_groove(&a, swing, feel, drunk, accent);
+  arp_seed_mutation(&a, 777);
+  double t = 0, end = 240.0 * nsteps; int i = 0;
+  while (t < end) {
+    double e = nch ? t + chunks[i++ % nch] : end;
+    if (e > end) e = end;
+    arp_process(&a, t, e, collect, l);
+    t = e;
+  }
+}
+
+static void test_groove(void) {
+  Log l; double tk[256]; int vel[256], n;
+  /* swing 75 % at 1/16: full delay = 120 ticks */
+  l.n = 0; groove_run(&l, 75, ARP_FEEL_PAIRS, 0, 0, 4, NULL, 0);
+  n = on_ticks(&l, tk, NULL);
+  static const double e1[] = { 0, 360, 480, 840 };
+  expect_ticks("Pairs, swing 75 %: every 2nd step +120", tk, n, e1, 4);
+  l.n = 0; groove_run(&l, 75, ARP_FEEL_FOURS, 0, 0, 4, NULL, 0);
+  n = on_ticks(&l, tk, NULL);
+  static const double e2[] = { 0, 300, 600, 780 };
+  expect_ticks("Fours: 0 1/2 1 1/2", tk, n, e2, 4);
+  l.n = 0; groove_run(&l, 75, ARP_FEEL_DRAG, 0, 0, 5, NULL, 0);
+  n = on_ticks(&l, tk, NULL);
+  static const double e3[] = { 0, 280, 560, 840, 960 };
+  expect_ticks("Drag: 0 1/3 2/3 1, back on the beat", tk, n, e3, 5);
+  l.n = 0; groove_run(&l, 75, ARP_FEEL_THREES, 0, 0, 6, NULL, 0);
+  n = on_ticks(&l, tk, NULL);
+  static const double e4[] = { 0, 360, 480, 720, 1080, 1200 };
+  expect_ticks("Threes: 0 1 0", tk, n, e4, 6);
+  l.n = 0; groove_run(&l, 50, ARP_FEEL_PAIRS, 0, 0, 4, NULL, 0);
+  n = on_ticks(&l, tk, NULL);
+  static const double e5[] = { 0, 240, 480, 720 };
+  expect_ticks("swing 50 %: straight", tk, n, e5, 4);
+  l.n = 0; groove_run(&l, 66, ARP_FEEL_PAIRS, 0, 0, 2, NULL, 0);
+  n = on_ticks(&l, tk, NULL);
+  static const double e5b[] = { 0, 240 + 240 * 0.32 };
+  expect_ticks("swing 66 %: +0.32 step", tk, n, e5b, 2);
+
+  /* the gate of a delayed note: 50 % of the step from its own start */
+  l.n = 0; groove_run(&l, 75, ARP_FEEL_PAIRS, 0, 0, 3, NULL, 0);
+  static const double e6[][3] = { {0, 1, 60}, {120, 0, 60}, {360, 1, 60}, {480, 0, 60}, {480, 1, 60}, {600, 0, 60} };
+  check("delayed note keeps its gate", &l, e6, 6);
+
+  /* chunked processing: a step delayed past the block end plays once, same as one block */
+  Log ref = {0}, c = {0};
+  groove_run(&ref, 72, ARP_FEEL_DRAG, 60, 50, 64, NULL, 0);
+  const double ch1[] = { 1 }, ch2[] = { 100, 37.5, 333, 7 }, ch3[] = { 239.9, 0.2 };
+  int ok = 1;
+  c.n = 0; groove_run(&c, 72, ARP_FEEL_DRAG, 60, 50, 64, ch1, 1); ok = ok && same_logs(&ref, &c);
+  c.n = 0; groove_run(&c, 72, ARP_FEEL_DRAG, 60, 50, 64, ch2, 4); ok = ok && same_logs(&ref, &c);
+  c.n = 0; groove_run(&c, 72, ARP_FEEL_DRAG, 60, 50, 64, ch3, 2); ok = ok && same_logs(&ref, &c);
+  n = on_ticks(&ref, tk, NULL);
+  ok = ok && n == 64;
+  printf("%s: groove: any block sizes give the same events, every step once\n", ok ? "PASS" : "FAIL");
+  failures += !ok;
+
+  /* Drunk: late only, within 1/4 step, smooth, reproducible */
+  l.n = 0; groove_run(&l, 50, ARP_FEEL_PAIRS, 100, 0, 200, NULL, 0);
+  n = on_ticks(&l, tk, NULL);
+  double mx = 0, maxjump = 0, prev = 0; ok = n == 200;
+  for (int i = 0; ok && i < n; i++) {
+    double d = tk[i] - 240.0 * i;
+    if (d < -1e-9 || d > 60 + 1e-9) ok = 0;
+    if (d > mx) mx = d;
+    if (i && fabs(d - prev) > maxjump) maxjump = fabs(d - prev);
+    prev = d;
+  }
+  ok = ok && mx > 30 && maxjump <= 0.2 * 60 + 1e-6;
+  printf("%s: Drunk 100 %%: 0..60 ticks late (max %.1f), changes at most 12 per step (max %.1f)\n",
+         ok ? "PASS" : "FAIL", mx, maxjump);
+  failures += !ok;
+  c.n = 0; groove_run(&c, 50, ARP_FEEL_PAIRS, 100, 0, 200, NULL, 0);
+  printf("%s: Drunk is reproducible from the mutation seed\n", same_logs(&l, &c) ? "PASS" : "FAIL");
+  failures += !same_logs(&l, &c);
+  l.n = 0; groove_run(&l, 75, ARP_FEEL_PAIRS, 100, 0, 200, NULL, 0);
+  n = on_ticks(&l, tk, NULL);
+  ok = n == 200;
+  for (int i = 1; ok && i < n; i++) if (tk[i] <= tk[i - 1]) ok = 0;
+  printf("%s: swing 75 %% + Drunk 100 %%: notes stay in order\n", ok ? "PASS" : "FAIL");
+  failures += !ok;
+
+  /* Accent: by the feel shape, works without swing too */
+  l.n = 0; groove_run(&l, 50, ARP_FEEL_FOURS, 0, 100, 4, NULL, 0);
+  n = on_ticks(&l, tk, vel);
+  ok = n == 4 && vel[0] == 120 && vel[1] == 90 && vel[2] == 60 && vel[3] == 90;
+  printf("%s: Accent 100 %%, Fours: 120 90 60 90\n", ok ? "PASS" : "FAIL");
+  if (!ok) { printf("  got:"); for (int i = 0; i < n; i++) printf(" %d", vel[i]); printf("\n"); failures++; }
+  l.n = 0; groove_run(&l, 50, ARP_FEEL_DRAG, 0, 50, 4, NULL, 0);
+  n = on_ticks(&l, tk, vel);
+  ok = n == 4 && vel[0] == 110 && vel[1] == 100 && vel[2] == 90 && vel[3] == 80;
+  printf("%s: Accent 50 %%, Drag: 110 100 90 80\n", ok ? "PASS" : "FAIL");
+  if (!ok) { printf("  got:"); for (int i = 0; i < n; i++) printf(" %d", vel[i]); printf("\n"); failures++; }
+
+  /* relocation back: steps play again */
+  {
+    ArpCore a; arp_init(&a); arp_note_on(&a, 0, 60, 100);
+    arp_set_groove(&a, 75, ARP_FEEL_PAIRS, 0, 0);
+    Log x = {0};
+    arp_process(&a, 0, 960, collect, &x);
+    arp_silence(&a, 960, collect, &x);
+    x.n = 0;
+    arp_process(&a, 0, 480, collect, &x);
+    n = on_ticks(&x, tk, NULL);
+    static const double e7[] = { 0, 360 };
+    expect_ticks("relocation back to 0: the steps play again", tk, n, e7, 2);
+    /* jump forward into the middle of a delayed step: it still plays */
+    x.n = 0;
+    arp_silence(&a, 480, collect, &x);
+    arp_process(&a, 1700, 1920, collect, &x);
+    n = on_ticks(&x, tk, NULL);
+    static const double e8[] = { 1800 };   /* step 1680 delayed to 1800 */
+    expect_ticks("jump into a swing delay: the delayed step plays", tk, n, e8, 1);
+  }
+
+  /* tie with swing: legato into the delayed note */
+  {
+    ArpCore a; arp_init(&a); arp_note_on(&a, 0, 60, 100); arp_note_on(&a, 0, 64, 100);
+    arp_set_length(&a, 1); arp_set_step(&a, 0, 100, 0, 100, ARP_GATE_TIE);
+    arp_set_groove(&a, 75, ARP_FEEL_PAIRS, 0, 0);
+    Log x = {0};
+    arp_process(&a, 0, 480, collect, &x);
+    static const double e9[][3] = { {0, 1, 60}, {360, 1, 64}, {360, 0, 60} };
+    check("tie with swing: the next note starts at its delayed time", &x, e9, 3);
+  }
+}
+
 int main(void) {
   test_up_one_block();
   test_chunks();
@@ -1111,6 +1260,7 @@ int main(void) {
   test_mutation_details();
   test_transpose();
   test_repeats();
+  test_groove();
   printf(failures ? "\n%d FAILED\n" : "\nALL PASSED\n", failures);
   return failures ? 1 : 0;
 }

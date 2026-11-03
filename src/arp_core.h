@@ -35,6 +35,8 @@ enum { ARP_UP, ARP_DOWN, ARP_UPDOWN, ARP_DOWNUP, ARP_PLAYED, ARP_RANDOM, ARP_LOO
  * up, or quieter by ARP_ECHO_PCT % each. */
 enum { ARP_RPT_SAME, ARP_RPT_RUN_UP, ARP_RPT_RUN_DOWN, ARP_RPT_OCT, ARP_RPT_ECHO, ARP_NRPT_MODES };
 #define ARP_ECHO_PCT 70
+/* Groove: step delay pattern (share of the swing delay, in sixths) by grid position; delays are late only. */
+enum { ARP_FEEL_PAIRS, ARP_FEEL_FOURS, ARP_FEEL_DRAG, ARP_FEEL_THREES, ARP_NFEELS };
 
 /* Called for every outgoing MIDI event; tick is inside the range passed to arp_process(). */
 typedef void (*arp_emit_fn)(void* user, double tick, uint8_t st, uint8_t d1, uint8_t d2);
@@ -65,6 +67,7 @@ typedef struct {
   int key, scale;               /* key 0..11 (C..B), scale ARP_SCALE_* */
   int transpose;                /* -2..+2 octaves, added to every generated note */
   int rpt, rpt_mode;            /* repeats 1..5 or ARP_RPT_RND*, ARP_RPT_* mode */
+  int swing, feel, drunk, accent; /* swing 50..75 %, ARP_FEEL_*, drunk 0..100 %, accent 0..100 % */
 
   /* note order state; reset when all keys are released */
   int has_last;                 /* last played pitch valid */
@@ -74,6 +77,12 @@ typedef struct {
   uint32_t loop_pos;            /* Loop order position (advances once per chord note, not per repeat) */
   int rpt_left, rpt_k;          /* repeats still to play of the current note, number of the current repeat */
   ArpNote rpt_note;             /* the chord note being repeated */
+
+  /* groove timing: grid step s plays at s + offset */
+  double done_s;                /* last grid step played (-INFINITY: none) */
+  double off_s, off_step, off_val; /* cached offset of grid step off_s (with step length off_step) */
+  int off_sixths;               /* its share of the swing delay, for Accent */
+  float drunk_w;                /* Drunk random walk 0..1 */
   uint32_t count;               /* grid steps since the pattern restarted; row r uses step count % lane_len[r] */
   uint32_t step_count;          /* number of the last step (1-based) for display; 0 when idle */
   uint32_t rng;
@@ -118,6 +127,10 @@ void arp_mutate_step(ArpCore* a, int i, int lane);
 void arp_set_transpose(ArpCore* a, int octaves);
 /* Repeats 1..5 / ARP_RPT_RND3 / ARP_RPT_RND5 and their mode ARP_RPT_* (takes effect on the next step). */
 void arp_set_repeats(ArpCore* a, int rpt, int mode);
+/* Groove: swing 50..75 %, feel ARP_FEEL_*, drunk 0..100 %, accent 0..100 %. */
+void arp_set_groove(ArpCore* a, int swing, int feel, int drunk, int accent);
+/* Delay of grid step s in ticks (computed once per step: Drunk advances), see arp_set_groove(). */
+double arp_step_offset(ArpCore* a, double s);
 /* Key 0..11 (C..B) and scale for Shift. */
 void arp_set_scale(ArpCore* a, int key, int scale);
 /* note + n semitones, pulled into the scale (n != 0); may return a value outside 0..127. */
